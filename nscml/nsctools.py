@@ -400,7 +400,7 @@ def search_files_for_microlensing_events(lcfiles: Iterable[str],
 def consolidate_search_files_for_microlensing_events(partialfiles):
     with open(partialfiles[0], 'rb') as f:
         metadata, search_params, excursions = pickle.load(f)
-    for file in partialfiles:
+    for file in partialfiles[1:]:
         with open(file, 'rb') as f:
             file_metadata, file_search_params, file_excursions = pickle.load(f)
         if metadata != file_metadata:
@@ -414,7 +414,7 @@ def consolidate_search_files_for_microlensing_events(partialfiles):
         excursions.update(file_excursions)
     with open(metadata['outdir']+metadata['outfile'], 'wb') as f:
         pickle_data = (metadata, search_params, excursions)
-        pickle.dump(pickle_data, f) 
+        pickle.dump(pickle_data, f)
     return pickle_data
 
 def reduce_excursions(excursions: dict):
@@ -453,3 +453,16 @@ def check_segment(lc: pd.DataFrame(), timescale=0.5):
     print(len(lc.index))
     print(lc.index.difference(indices))
     return segs
+
+def compute_file_map(files):
+    objfilemap = {}
+    fileenum = {}
+    for i, file in enumerate(tqdm.tqdm(files)):
+        fileenum[i] = file
+        df = pd.read_parquet(file, columns=['objectid'])
+        for objid in df['objectid'].unique():
+            objfilemap[objid]=i
+    return objfilemap
+
+def get_lc(objid, objfilemap, **kwargs):
+    return pd.read_parquet(fileenum[objfilemap[objid]],filters=[("objectid", "=",objid)], **kwargs)

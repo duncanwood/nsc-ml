@@ -1,0 +1,6 @@
+nsctools.py
+setup.py
+nscml.egg-info/PKG-INFO
+nscml.egg-info/SOURCES.txt
+nscml.egg-info/dependency_links.txt
+nscml.egg-info/top_level.txt
