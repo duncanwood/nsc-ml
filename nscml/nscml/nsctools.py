@@ -7,17 +7,17 @@ import os
 import re
 import shutil
 import warnings
+import inspect
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 # import matplotlib as mpl
-import matplotlib.patches as mpatches
-from matplotlib.lines import Line2D
+# from matplotlib.lines import Line2D
 
 import pandas as pd
 import numpy as np
 from scipy.stats import distributions
 from scipy import sparse, optimize
-from numba import njit, vectorize
+from numba import njit
 
 
 
@@ -74,66 +74,17 @@ def make_instrument(df: pd.DataFrame):
     newdf.loc[:,'instrument'] = instrument_list
     return newdf
 
+def get_default_args(func):
+    """
+    From https://stackoverflow.com/questions/12627118/get-a-function-arguments-default-value
+    """
+    signature = inspect.signature(func)
+    return {
+        k: v.default
+        for k, v in signature.parameters.items()
+        if v.default is not inspect.Parameter.empty
+    }
 
-def plot_lc(lc: pd.DataFrame, **kwargs):
-    objid = lc['objectid'].unique()
-    assert len(objid)==1
-    objid = objid[0]
-    fig, ax = plt.subplots()
-    for f in lc['filter'].unique():
-        f_df = lc[lc['filter']==f]
-        plt.errorbar(f_df['mjd'], f_df['mag_auto'], f_df['magerr_auto'],
-                     c=color_filter[f.lower()],linestyle='None', 
-                     marker='o',  label=f)
-        plt.hlines(f_df[f.lower()+'mag'], f_df['mjd'].to_numpy().min(),
-                   f_df['mjd'].to_numpy().max(), 
-                   color=color_filter[f.lower()], linestyle='dashed')
-    plt.legend()
-    if 'xlims' in kwargs:
-        plt.xlim(kwargs['xlims'])
-    plt.xlabel('MJD')
-    plt.title(f'{objid}')
-    plt.gca().invert_yaxis()
-    plt.show()
-
-def plot_obj(objid: str, curves: pd.DataFrame, **kwargs):
-    plot_lc(curves.get_group(objid), **kwargs)
-
-def plot_deltamags(lc: pd.DataFrame, **kwargs):
-    id = lc['objectid'].unique()
-    assert len(id)==1
-    id = str(id[0])
-    # fig, ax = plt.subplots()
-    gb = lc.groupby(['filter', 'instrument'], observed=True)
-    for f, instrument in gb.groups.keys():
-        f_df = lc[lc['filter']==f]
-        plt.errorbar(f_df['mjd'], f_df['deltamag'], f_df['magerr_auto'],
-                     c=color_filter[f.lower()],linestyle='None', 
-                     markersize=5, marker=marker_map[instrument], capsize=0)
-        # plt.hlines(f_df[f.lower()+'mag'], f_df['mjd'].to_numpy().min(),f_df['mjd'].to_numpy().max() , color=color_filter[f], linestyle='dashed')
-    patches = [ mpatches.Patch(color=color_filter[f.lower()], label=f)  
-                for f in lc['filter'].unique() ]
-    points = [  Line2D([0], [0], label=instrument, 
-                        marker=marker_map[instrument], markersize=10,  
-                        markeredgecolor='black', markerfacecolor='black', 
-                        linestyle='') 
-                for instrument in lc['instrument'].unique()]
-
-    handles, labels = plt.gca().get_legend_handles_labels()
-    handles.extend([*patches,  *points])
-
-    plt.legend(handles=handles)
-    if 'xlims' in kwargs:
-        plt.xlim(kwargs['xlims'])
-    plt.xlabel('MJD')
-    plt.ylabel('Change from baseline (mag)')
-    plt.title(f'{id}')
-    plt.gca().invert_yaxis()
-    if 'show' in kwargs and kwargs['show']==True:
-        plt.show()
-
-def plot_obj_dm(id: str, dmgroupby, **kwargs):
-    plot_deltamags(dmgroupby.get_group(id), **kwargs)
 
 
 def convert_to_range_index(idxs):
@@ -173,6 +124,7 @@ def get_just_well_sampled_objects(df, progress=False):
             well_sampled_objects[obj] = regions
     return well_sampled_objects
 
+@njit
 def microlensing_amplification(t, impact_parameter=1, crossing_time=40.0,
                                peak_time=100, blending_factor=1):
     """The microlensing amplification
@@ -199,8 +151,49 @@ def microlensing_amplification(t, impact_parameter=1, crossing_time=40.0,
 
     return amplified_mag
 
+# @njit
+# def ml_jac(t, impact_parameter=1, crossing_time=40.0,
+#                                peak_time=100, blending_factor=1):
+
+#     denominator = (peak_time**2 - 2*peak_time*t + t**2 
+#                    + crossing_time**2 * impact_parameter**2) * \
+#                    (peak_time**2 - 2*peak_time*t + t**2 
+#                     + crossing_time**2 * (2+impact_parameter**2)) * \
+#                   (peak_time**2 - 2*peak_time*t + t**2 
+#                    + crossing_time**2 * (4+impact_parameter**2)) * np.log(10)
+#     return np.array([20*crossing_time**6 * impact_parameter,
+#                     -20*(peak_time-t)**2 * crossing_time**3,
+#                     20 * (peak_time-t) * crossing_time**4])/denominator
+
+@njit
+def ml_jac(t, impact_parameter, crossing_time, peak_time):
+    # t,  = params
+    denominator = (peak_time**2 - 2*peak_time*t + t**2 
+                   + crossing_time**2 * impact_parameter**2) * \
+                   (peak_time**2 - 2*peak_time*t + t**2 
+                    + crossing_time**2 * (2+impact_parameter**2)) * \
+                  (peak_time**2 - 2*peak_time*t + t**2 
+                   + crossing_time**2 * (4+impact_parameter**2)) * np.log(10)
+    d0,d1,d2 = (20*crossing_time**6 * impact_parameter * np.ones_like(t),
+                    -20*(peak_time-t)**2 * crossing_time**3,
+                    20 * (peak_time-t) * crossing_time**4)
+    jac = np.zeros(shape=(t.shape[0], 3))
+    jac[:,0] = d0/denominator
+    jac[:,1] = d1/denominator
+    jac[:,2] = d2/denominator
+
+    return jac
+
+
+@njit
 def amp_to_mag(amp):
     return -2.5*np.log10(amp)
+
+def synth_objid(objid, lensing_params):
+    return (str(objid) 
+               + f"_ml_{lensing_params['peak_time']:.2f}"
+               + f"_{lensing_params['crossing_time']:.2f}"
+               + f"_{lensing_params['impact_parameter']:.5f}")
 
 def add_microlensing_event(df: pd.DataFrame, **lensing_params):
     """
@@ -208,20 +201,25 @@ def add_microlensing_event(df: pd.DataFrame, **lensing_params):
     superimposed on the curve, with params given in 'lensing_params'
     """
     lc = df.copy()
-    mag_diffs = amp_to_mag(microlensing_amplification(lc['mjd'], **lensing_params))
+    mag_diffs = amp_to_mag(microlensing_amplification(lc['mjd'].to_numpy(), **lensing_params))
     lc['mag_auto'] = (lc['mag_auto'] + mag_diffs).astype(lc.dtypes['mag_auto'])
     lc['deltamag'] = (lc['deltamag'] + mag_diffs).astype(lc.dtypes['deltamag'])
 
-    newobjid = str(lc.iloc[0]['objectid']) + f"_ml_{lensing_params['peak_time']:.2f}_{lensing_params['crossing_time']:.2f}_{lensing_params['impact_parameter']:.5f}"
+    newobjid = synth_objid(lc.iloc[0]['objectid'], lensing_params)
+    # newobjid = str(lc.iloc[0]['objectid']) \
+    #                + f"_ml_{lensing_params['peak_time']:.2f}_{lensing_params['crossing_time']:.2f}_{lensing_params['impact_parameter']:.5f}"
     # lc['objectid'] = lc['objectid'].cat.add_categories(newobjid)
+    lc['originalid'] = lc['objectid']
     lc['objectid'] = newobjid
     
     return lc
 
+@njit
 def ml_f(*x):
     return amp_to_mag(microlensing_amplification(*x))
 
-def generate_synthetic_microlensing_events_from_population(lcfiles, events_file, ws_regions, outdir, outname):
+def generate_synthetic_microlensing_events_from_population(
+        lcfiles, events_file, ws_regions, outdir, outname):
     # outdir = databasedir+datasetname+'/synth/'
 
     if isinstance(events_file, str):
@@ -260,10 +258,12 @@ def generate_synthetic_microlensing_events_from_population(lcfiles, events_file,
             for region in regions:
                 times = lc.loc[region]['mjd'].to_numpy()
                 peak_time=np.mean([times[0],times[-1]])
-                mldfs.append(add_microlensing_event(lc, \
+                new_lc = add_microlensing_event(lc, \
                             impact_parameter=impact_parameter, crossing_time=crossing_time, \
-                            peak_time=peak_time))
+                            peak_time=peak_time) 
+                mldfs.append(new_lc)
                 object_event_list.append({'objectid': objid,
+                                          'synthid' : str(new_lc.iloc[0]['objectid']),
                                           'event_index': events_df.index[event_indices[i]],
                                           'crossing_time': crossing_time,
                                           'umin': impact_parameter,
@@ -276,6 +276,7 @@ def generate_synthetic_microlensing_events_from_population(lcfiles, events_file,
         bigdf['exposure'] = bigdf['exposure'].astype('category')
         bigdf['filter'] = bigdf['filter'].astype('category')
         bigdf['objectid'] = bigdf['objectid'].astype('category')
+        bigdf['originalid'] = bigdf['originalid'].astype('category')
         bigdf['instrument'] = bigdf['instrument'].astype('category')
         bigdf.to_parquet(outpath)#,append=os.path.exists(outpath))
         del df, bigdf
@@ -285,7 +286,6 @@ def generate_synthetic_microlensing_events_from_population(lcfiles, events_file,
         pickle.dump((outinfo, object_event_df), f)
     
    
-
 
 def ks_weighted(data1, data2, wei1, wei2, alternative='two-sided'):
     ix1 = np.argsort(data1)
@@ -337,22 +337,65 @@ def reject_outliers(data, m = 3.):
     return data[reject_outliers_args(data, m)]
 
 
-# @njit
-# def sparse_gaussian_window_iter(dts, timescale=2, nclip=10):
-#     rows = []
-#     cols = []
-#     vals = []
-#     for i in range(len(dts)):
-#         for j in range(len(dts[0])):
-#             dt = dts[i,j]
-#             if np.abs(dt) > nclip*timescale:
-#                 continue
-#             else:
-#                 rows.append(i)
-#                 cols.append(j)
-#                 vals.append(np.exp(-((dt/timescale)**2)/2))
-#     return (vals, (rows, cols))
+@njit
+def sparse_gaussian_wma(y, t, weights, timescale=2, nclip=10):
+
+    wma = np.copy(weights*y)
+    wme = weights.copy()
+    windows_X_weights = weights.copy()
+
+    windowstart = 0
+    for i, ti in enumerate(t):
+        dt = ti - t[windowstart]
+        while dt > timescale*nclip and dt >= 0:
+            windowstart += 1
+            dt = ti - t[windowstart]
+            continue
+        for j in range(windowstart, i):
+            dt = ti - t[j]
+
+            window = np.exp(-((dt/timescale)**2)/2)
+            window_X_weight_i = window*weights[i]
+            window_X_weight_j = window*weights[j]
+            wma[i] += window_X_weight_j * y[j]
+            wme[i] += window * window_X_weight_j
+            windows_X_weights[i] += window_X_weight_j
+            wma[j] += window_X_weight_i * y[i]
+            wme[j] += window * window_X_weight_i
+
+            windows_X_weights[j] += window_X_weight_i
+ 
+    wma = wma/windows_X_weights
+    wme = np.sqrt(wme)/windows_X_weights
+    return wma, wme, sparse_gaussian_wms(y, t, weights, wma,  
+                                         timescale=timescale, nclip=nclip)
     
+@njit
+def sparse_gaussian_wms(y, t, weights, wma,  timescale=2, nclip=10):
+
+    wms = np.copy(weights*(y-wma)**2)
+    windows_X_weights = weights.copy()
+
+    windowstart = 0
+    for i, ti in enumerate(t):
+        dt = ti - t[windowstart]
+        while dt > timescale*nclip and dt >= 0:
+            windowstart += 1
+            dt = ti - t[windowstart]
+            continue
+        for j in range(windowstart, i):
+            dt = ti - t[j]
+
+            window = np.exp(-((dt/timescale)**2)/2)
+            window_X_weight_i = window*weights[i]
+            window_X_weight_j = window*weights[j]
+            wms[j] += window_X_weight_i * (y[i] - wma[i])**2
+            wms[i] += window_X_weight_j * (y[j] - wma[j])**2
+            windows_X_weights[i] += window_X_weight_j
+            windows_X_weights[j] += window_X_weight_i
+
+    return np.sqrt(wms/windows_X_weights)
+
 @njit
 def sparse_gaussian_window_iter(t, timescale=2, nclip=10):
     rows = []
@@ -413,10 +456,13 @@ def weighted_avg_and_std(values, weights):
     return (average, np.sqrt(variance))
 
 
-def weighted_moving_average(y, t, errors, **kwargs):
+def weighted_moving_average(y, t, errors, sparse=True, **kwargs):
     y = y.astype('float64')
     errors = errors.astype('float64')
-    return compute_weighted_moving_average(y,t,errors,**kwargs)
+    if sparse:
+        return sparse_gaussian_wma(y, t, 1/errors**2, **kwargs)
+    else:
+        return compute_weighted_moving_average(y,t,errors,**kwargs)
 
 @njit
 def compute_weighted_moving_average(y, t, errors, window_fn=gaussian_window, timescale=2):
@@ -470,29 +516,19 @@ def weighted_moving_average_df(lc,  **kwargs):
 
 
 
-def plot_weighted_moving_average_df(df, usescatter=True, timescale=2, **kwargs):
-    df=df.sort_values('mjd')
-    d=df['deltamag'].to_numpy()
-    e=df['magerr_auto'].to_numpy()
-    t=df['mjd'].to_numpy()
-    plot_deltamags(df, **kwargs)
-    wma, errs, scatter = weighted_moving_average(d, t, e, timescale=timescale)
-    if usescatter:
-        confidence = np.sqrt(errs**2 + scatter**2)
-    else: 
-        confidence = errs
-    plt.plot(t,wma, linestyle='dotted')
-    plt.fill_between(t,wma-confidence,wma+confidence, alpha=.2)
-    # plt.fill_between(t,weighted_moving_average(d-e, t, e, timescale=2), weighted_moving_average(d+e, t, e, timescale=2), alpha=.2)
 
 def float_cols_to_double(df: pd.DataFrame):
     floatcols = [k for k,v in df.dtypes.items() if v=='float32']
     df[floatcols] = df[floatcols].astype('float64')
     return df
 
+def strip_objid(objid):
+    m = re.search(r'(\w+)_ml_', objid)
+    return m.group(1)
+
 def find_persistent_excursions(df, outliers_cutoff=3, cut_outliers=False,
         outliers_cutoff_data=20,
-        z_threshold=3, timescale=2, n_measured=4, 
+        z_threshold=3, timescale=5, n_measured=4, 
         duration=5, restrict_to_indices=None, usescatter=True,
         temper_errors=None):
     df = df.sort_values('mjd')
@@ -500,7 +536,7 @@ def find_persistent_excursions(df, outliers_cutoff=3, cut_outliers=False,
     no_outliers = df.iloc[reject_outliers_args(df['deltamag'].to_numpy(), outliers_cutoff)]
     if cut_outliers:
         df = df.iloc[reject_low_error_outliers_args(df['deltamag'].to_numpy(), 
-                                            df['deltamag'].to_numpy(),
+                                            df['magerr_auto'].to_numpy(),
                                             outliers_cutoff_data)]
 
 
@@ -539,7 +575,7 @@ def find_persistent_excursions(df, outliers_cutoff=3, cut_outliers=False,
         valid_regions.append(region)
     return valid_regions
 
-def search_files_for_microlensing_events(lcfiles: Iterable[str], 
+def search_files_for_excursions(lcfiles: Iterable[str], 
         search_domains: dict,  metadata: dict, search_params: dict):
 
     timestamp = int(time.time())
@@ -553,6 +589,10 @@ def search_files_for_microlensing_events(lcfiles: Iterable[str],
         metadata['outdir'] = outdir
     tmpdir = metadata['outdir']+f'/tmp-{timestamp}/'
     os.makedirs(tmpdir, exist_ok=True)
+    
+    params = get_default_args(find_persistent_excursions)
+    params.update(search_params)
+    params.pop('restrict_to_indices', None)
 
     for file in tqdm.tqdm(lcfiles):
         file_excursions = {}
@@ -569,22 +609,22 @@ def search_files_for_microlensing_events(lcfiles: Iterable[str],
                 original_id = objid
             excs = find_persistent_excursions(lc, 
                        restrict_to_indices=np.concatenate(search_domains[original_id]),
-                       **search_params)
+                       **params)
             file_excursions[objid] = excs
         filename = file.split('/')[-1]
         tmpfile = tmpdir+filename+'-search.pickle'
         with open(tmpfile, 'wb') as f:
-            pickle_data = (metadata, search_params, file_excursions)
+            pickle_data = (metadata, params, file_excursions)
             pickle.dump(pickle_data, f)
         tmpfiles.append(tmpfile)
 
         del df, gb
         gc.collect()
-    results = consolidate_search_files_for_microlensing_events(tmpfiles)
+    results = consolidate_search_files_for_excursions(tmpfiles)
     shutil.rmtree(tmpdir)
     return results
 
-def consolidate_search_files_for_microlensing_events(partialfiles):
+def consolidate_search_files_for_excursions(partialfiles):
     with open(partialfiles[0], 'rb') as f:
         metadata, search_params, excursions = pickle.load(f)
     for file in partialfiles[1:]:
@@ -613,14 +653,6 @@ def get_nondetections(excursions: dict):
 
 
 
-def plot_excursion_region(lc, region, timescale=2, context_size=100, **kwargs):
-    plot_weighted_moving_average_df(lc,timescale=timescale, xlims=np.percentile(lc.loc[region,'mjd'].to_numpy(),(0,100))+np.array([-context_size,context_size]), **kwargs)
-    ymin = np.min(lc.loc[region,'deltamag'].to_numpy() - lc.loc[region,'magerr_auto'].to_numpy())
-    
-    ymax = np.max(lc.loc[region,'deltamag'].to_numpy() + lc.loc[region,'magerr_auto'].to_numpy())
-    plt.vlines(np.percentile(lc.loc[region,'mjd'].to_numpy(),(0,100)), ymin,ymax, linestyle='dashed')
-    plt.fill_between(np.percentile(lc.loc[region,'mjd'].to_numpy(),(0,100)), ymin,ymax, alpha=.2)
-
 
 def compute_file_map(files):
     objfilemap = {}
@@ -633,48 +665,24 @@ def compute_file_map(files):
     return objfilemap, fileenum
 
 def extend_lc(df, region, context_size = 100):
+    """_summary_
+
+    Args:
+        df (_type_): A lightcurve sorted by 'mjd'
+        region (_type_): _description_
+        context_size (int, optional): _description_. Defaults to 100.
+
+    Returns:
+        _type_: _description_
+    """
     estart, eend = df.loc[region,'mjd'].min(), df.loc[region,'mjd'].max()
     return df[(df['mjd']> estart-context_size) & (df['mjd'] < eend+context_size)].index
 
-def plot_example_fits(fulldf, all_excursions, fitresults, 
-                      fileenum, objfilemap, limitnum=10):
-    plotidx= np.random.choice(list(fulldf.index), min(limitnum, len(fulldf)), 
-                              replace=False)
-    for idx in plotidx:
-        obj = fulldf.loc[idx]['objectid']
-        exc_idx = fulldf.loc[idx]['excnum']
-        region = all_excursions[obj][exc_idx]
-        file = fileenum[objfilemap[obj]]
-        df = pd.read_parquet(file)
-        df = df[df['objectid']==obj]
-        df = float_cols_to_double(df)
-        print(obj)    
 
 
-
-        plot_excursion_region(df[df['objectid']==obj], region, context_size=30, timescale=5)
-        
-        extended_region = extend_lc(df, region)
-        ext_region_df = df.loc[extended_region].sort_values('mjd')
-        # dms = ext_region_df['deltamag'].to_numpy()
-        # errs = ext_region_df['magerr_auto'].to_numpy()
-        mjds = ext_region_df['mjd'].to_numpy()
-        # filters = ext_region_df['filter'].to_numpy()
-        mjds = np.linspace(mjds[0], mjds[-1],200)
-
-        fitresult = [result for result in fitresults if result[0] ==obj][exc_idx]
-        fitinfo = fitresult[3][0]
-        print(fitresult)
-        fitmags = ml_f(mjds,*fitinfo)
-        plt.plot(mjds, fitmags,c='black', linestyle='dashed',marker='None', label='PSPL fit')
-
-        plt.show()
-        plt.clf()
-        plt.close("all")
-
-
-def fit_excursions(excursions, lcfiles,  n_min_outside_fit = 10, 
-                   outliers_cutoff=3, temper_errors=1, n_ks_gaussian=10000):
+def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit = 10, 
+                   outliers_cutoff=3, temper_errors=1, n_ks_gaussian=10000,
+                   context_size=100, crossing_time_guess=40):
     
     fitresults = []
     fitfails = []
@@ -707,29 +715,28 @@ def fit_excursions(excursions, lcfiles,  n_min_outside_fit = 10,
                 errs = ext_region_df['magerr_auto'].to_numpy()
                 mjds = ext_region_df['mjd'].to_numpy()
                 # filters = ext_region_df['filter'].to_numpy()
-                # plt.errorbar(mjds,dms, errs,linestyle='None',marker='.')
-                # plt.gca().invert_yaxis()
 
                 try:
                     with warnings.catch_warnings(action="ignore"):
                         fitresult=optimize.curve_fit(ml_f, mjds, dms, 
-                                                p0=(1, 40,np.mean(mjds)),
-                                                sigma=errs,full_output=False,
-                                                bounds=([0,1, mjds[0]-365*10],
-                                                        [5,365*10, mjds[-1]+365*10]))
+                                        p0=(1, crossing_time_guess ,np.mean(mjds)),
+                                        sigma=errs,full_output=False,
+                                        absolute_sigma=True,
+                                        x_scale=[1, crossing_time_guess, 
+                                                 np.diff(np.percentile(mjds,(0,100)))],
+                                        bounds=([0,1, mjds[0]-365*10],
+                                                [5,365*10, mjds[-1]+365*10]),
+                                        jac=ml_jac)
                 except RuntimeError:
                     fitfails.append((objid, i))
                     continue
-                # except IndexError as e:
                     
                 fitp=fitresult[0]
 
                 if list(fitp) in objfits:
-                    # print(f'Duplicate found in {objid} with {fitp}')
                     fitdups.append((objid, i))
                     continue
                 objfits.append(list(fitp))
-                # print(fitp)
 
                 fitmags = ml_f(mjds,*fitp)
                 outside_fit_df = df.loc[df.index.difference(ext_region_full_df.index)]
@@ -748,17 +755,13 @@ def fit_excursions(excursions, lcfiles,  n_min_outside_fit = 10,
 
                 fitresults.append([objid, i, ksresult, fitresult, 
                                    ext_region_df.shape[0],len(outside_fit_df), kstwosided])
+    outpath = metadata['outdir']+'/'+metadata['fitoutfile']
+    os.makedirs(metadata['outdir'], exist_ok=True)
+    with open(outpath, 'wb') as f:
+        pickle.dump((fitresults, fitfails, fitdups, metadata, params), f)
+    return     fitresults, fitfails, fitdups
 
 def make_fit_excursions_df(fitresults):
-    # fitdf = pd.DataFrame({'objectid':[v[0] for v in fitresults], 'excnum': [v[1] for v in fitresults], 
-    #                   'pval': [v[2][1] for v in fitresults],'n_fit': [v[4] for v in fitresults], 
-    #                   'n_out':[v[5] for v in fitresults], 
-    #                   'cond_num': [np.linalg.cond(item[3][1]) for item in fitresults],
-    #                   'impact_parameter': [v[3][0][0] for v in fitresults],
-    #                   'crossing_time': [v[3][0][1] for v in fitresults],
-    #                   'peak_time': [v[3][0][2] for v in fitresults],
-    #                   'two_sample': [v[6] for v in fitresults]})
-
 
     data = {
         'objectid': [],
@@ -789,3 +792,92 @@ def make_fit_excursions_df(fitresults):
 
     # sfitdf = fitdf[['ml' in id for id in fitdf['objectid']]]
     # rfitdf = fitdf.loc[fitdf.index.difference(sfitdf.index)]
+
+def search_for_params(files, params):
+    finds = []
+    for file in files:
+        with open(file, 'rb') as f:
+            metadata, search_params, excursions = pickle.load(f)
+        if set(params) & set(search_params) == set(params):
+            if False in [search_params[k] == v for k,v in params.items()]:
+                continue
+            finds.append(file)
+    return finds
+
+def common_params(f, params):
+    args = get_default_args(f)
+    return {k:v for k,v in params.items() if k in args}
+
+def default_args_of_functions(fs):
+    params = {}
+    for f in fs:
+        params.update(get_default_args(f))
+    return params
+
+def search_files_for_microlensing_events(lcfiles, ws_regions, 
+                                         metadata, params):
+
+    all_params = default_args_of_functions([find_persistent_excursions,
+                                            fit_excursions])
+    if set(all_params) & set(params) != set(params):
+        raise ValueError(f'Unknown parameters: {set(params).difference(set(all_params))}') 
+
+
+    excursion_params = common_params(find_persistent_excursions, params)
+    fit_params = common_params(fit_excursions, params)
+
+    excursion_results =  \
+        search_files_for_excursions(lcfiles, ws_regions, 
+                                             metadata, excursion_params)
+    metadata, search_params, excursions = excursion_results
+
+    full_fit_results = fit_excursions(excursions, lcfiles, metadata, 
+                                                   fit_params, **fit_params)
+
+    fitresults, fitfails, fitdups = full_fit_results
+    
+    return excursion_results, full_fit_results
+
+def cut_by_npoints(df, npoints):
+    return df[df['n_fit'] + df['n_out']>=npoints]
+def cut_by_pval(df, pval: float):
+    return df[df['pval'] >= pval]
+def cut_high_points_low_p(df, npoints, pval):
+    return df[(df['pval'] >= pval) | ((df['n_fit'] + df['n_out'])<npoints)]
+def cut_high_points_inout_low_p(df, npoints, pval):
+    return df[(df['pval'] >= pval) | ((df['n_fit']<npoints) |  (df['n_out']<npoints))]
+# def cut_percent_coverage(df)
+def cut_pcov(df, cond_lim=10**5):
+    return df[df['cond_num'] < cond_lim]
+def cut_crossing_time(df, timemin=1, timemax=None):
+    if timemax is not None:
+        return df[(df['crossing_time']>timemin) & (df['crossing_time']<timemax)]
+
+    return df[df['crossing_time']>timemin]
+
+def split_real_synth_df(fitdf):
+    sfitdf = fitdf[['ml' in id for id in fitdf['objectid']]]
+    rfitdf = fitdf.loc[fitdf.index.difference(sfitdf.index)]
+    return rfitdf, sfitdf
+
+def fit_stats_split(rfitdf, sfitdf):
+    info = {}
+    info.update({})
+    return info
+
+def fit_stats_df(df):
+    info = {}
+    info.update({'n_excursions': df.shape[0]})
+    info.update({'n_excursions': df.shape[0]})
+    return info
+
+def fit_stats(full_fit_results):
+    info = {}
+    fitresults, fitfails, fitdups = full_fit_results
+    fitdf = make_fit_excursions_df(fitresults)
+    rfitdf, sfitdf = split_real_synth_df(fitdf)
+
+    if rfitdf.shape[0] > 0 and sfitdf.shape[0] > 0:
+        info.update(fit_stats_split(rfitdf, sfitdf))
+        info.update(fit_stats(rfitdf))
+    
