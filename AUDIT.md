@@ -44,11 +44,12 @@ through the cut -- turning a clean reject into a possible false positive. The
 rail-to-zero + condition-number cut is the intended degeneracy filter, so it
 was left unchanged. (Happy to revisit empirically if wanted.)
 
-New issue spotted while implementing (flagged, not fixed): `fit_excursions`
-takes a `context_size` parameter but calls `extend_lc(df, region)` without
-passing it, so the fit window is always the `extend_lc` default and the
-`fit_excursions` `context_size` argument is dead. Wiring it through would
-change results for any caller that sets it, so it is left pending a decision.
+Fixed (2026-06-02 follow-up): `fit_excursions` took a `context_size` parameter
+but called `extend_lc(df, region)` without passing it, so the fit window was
+always the 100-day default and the argument was dead. Now wired through
+(`extend_lc(df, region, context_size)`). The default (100) is unchanged, so the
+goldens and parity are unaffected; a regression test confirms a larger
+`context_size` pulls more epochs into the fit.
 
 ## What was changed in this branch
 
