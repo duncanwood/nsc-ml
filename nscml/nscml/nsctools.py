@@ -9,10 +9,6 @@ import shutil
 import warnings
 import inspect
 
-# import matplotlib.pyplot as plt
-# import matplotlib as mpl
-# from matplotlib.lines import Line2D
-
 import pandas as pd
 import numpy as np
 from scipy.stats import distributions
@@ -22,8 +18,6 @@ from numba import njit
 
 
 import tqdm
-
-# from .plot import *
 
 color_filter = {
     'u':'blue',
@@ -96,7 +90,6 @@ def convert_to_range_index(idxs):
 def well_sampled_region(df: pd.DataFrame, interval=50., maxrevisit=10, seqlen=5):
     df = df.sort_values('mjd')
     times = df['mjd'].to_numpy()
-    # dtimes = np.diff(times)
     valid_regions = []
     for region in np.split(df.index, np.where(np.diff(times) > maxrevisit)[0]+1):
         if (region.shape[0] >= seqlen):
@@ -142,7 +135,9 @@ def microlensing_amplification(t, impact_parameter=1, crossing_time=40.0,
     blending_factor: `float`
         The blending factor where 1 is unblended
     """
-
+    # Point-source point-lens (Paczynski) magnification A(u); u is the
+    # source-lens separation in Einstein radii. blending_factor f blends the
+    # event with constant light: A_obs = f*A + (1 - f).
     lightcurve_u = np.sqrt(impact_parameter**2 
                            + ((t - peak_time) ** 2 / crossing_time**2))
     amplified_mag = (lightcurve_u**2 + 2) / (
@@ -151,24 +146,11 @@ def microlensing_amplification(t, impact_parameter=1, crossing_time=40.0,
 
     return amplified_mag
 
-# @njit
-# def ml_jac(t, impact_parameter=1, crossing_time=40.0,
-#                                peak_time=100, blending_factor=1):
-
-#     denominator = (peak_time**2 - 2*peak_time*t + t**2 
-#                    + crossing_time**2 * impact_parameter**2) * \
-#                    (peak_time**2 - 2*peak_time*t + t**2 
-#                     + crossing_time**2 * (2+impact_parameter**2)) * \
-#                   (peak_time**2 - 2*peak_time*t + t**2 
-#                    + crossing_time**2 * (4+impact_parameter**2)) * np.log(10)
-#     return np.array([20*crossing_time**6 * impact_parameter,
-#                     -20*(peak_time-t)**2 * crossing_time**3,
-#                     20 * (peak_time-t) * crossing_time**4])/denominator
-
 @njit
 def ml_jac(t, impact_parameter, crossing_time, peak_time):
-    # t,  = params
-    denominator = (peak_time**2 - 2*peak_time*t + t**2 
+    # Analytic Jacobian d(ml_f)/d(impact_parameter, crossing_time, peak_time),
+    # columns in curve_fit p0 order. Derivation in the dissertation.
+    denominator = (peak_time**2 - 2*peak_time*t + t**2
                    + crossing_time**2 * impact_parameter**2) * \
                    (peak_time**2 - 2*peak_time*t + t**2 
                     + crossing_time**2 * (2+impact_parameter**2)) * \
@@ -206,9 +188,6 @@ def add_microlensing_event(df: pd.DataFrame, **lensing_params):
     lc['deltamag'] = (lc['deltamag'] + mag_diffs).astype(lc.dtypes['deltamag'])
 
     newobjid = synth_objid(lc.iloc[0]['objectid'], lensing_params)
-    # newobjid = str(lc.iloc[0]['objectid']) \
-    #                + f"_ml_{lensing_params['peak_time']:.2f}_{lensing_params['crossing_time']:.2f}_{lensing_params['impact_parameter']:.5f}"
-    # lc['objectid'] = lc['objectid'].cat.add_categories(newobjid)
     lc['originalid'] = lc['objectid']
     lc['objectid'] = newobjid
     
@@ -220,7 +199,6 @@ def ml_f(*x):
 
 def generate_synthetic_microlensing_events_from_population(
         lcfiles, events_file, ws_regions, outdir, outname):
-    # outdir = databasedir+datasetname+'/synth/'
 
     if isinstance(events_file, str):
         events_df = pd.read_pickle(events_file)
@@ -238,12 +216,9 @@ def generate_synthetic_microlensing_events_from_population(
                  'outsubdir': outsubdir}
     object_event_list = []
 
-    # impact_parameter=1
-    # crossing_time=40
     for file in tqdm.tqdm(lcfiles):
         filename = file.split('/')[-1]
         synthfile = '.'.join(filename.split('.')[:-1]) + f'-synth-{outname}.parquet'
-        # print(synthfile)
         
         df = pd.read_parquet(file)
         gb = df.groupby('objectid',observed=True)
@@ -278,7 +253,7 @@ def generate_synthetic_microlensing_events_from_population(
         bigdf['objectid'] = bigdf['objectid'].astype('category')
         bigdf['originalid'] = bigdf['originalid'].astype('category')
         bigdf['instrument'] = bigdf['instrument'].astype('category')
-        bigdf.to_parquet(outpath)#,append=os.path.exists(outpath))
+        bigdf.to_parquet(outpath)
         del df, bigdf
         
     object_event_df = pd.DataFrame.from_dict(object_event_list)
@@ -288,6 +263,9 @@ def generate_synthetic_microlensing_events_from_population(
    
 
 def ks_weighted(data1, data2, wei1, wei2, alternative='two-sided'):
+    # Weighted two-sample KS: generalizes scipy.stats.ks_2samp to per-point
+    # weights (inverse-variance here) so PSPL-fit residuals can be compared to
+    # the out-of-event photometry. p-value via the kstwo survival function.
     ix1 = np.argsort(data1)
     ix2 = np.argsort(data2)
     data1 = data1[ix1]
@@ -339,7 +317,10 @@ def reject_outliers(data, m = 3.):
 
 @njit
 def sparse_gaussian_wma(y, t, weights, timescale=2, nclip=10):
-
+    # t must be sorted ascending. windowstart drops epochs older than
+    # nclip*timescale (where the Gaussian is truncated), keeping this near
+    # O(n * window) instead of O(n^2). Each pair (i, j) is accumulated once and
+    # applied to both points; the i==i self term is the weights initialisation.
     wma = np.copy(weights*y)
     wme = weights.copy()
     windows_X_weights = weights.copy()
@@ -400,7 +381,7 @@ def sparse_gaussian_wms(y, t, weights, wma,  timescale=2, nclip=10):
 def sparse_gaussian_window_iter(t, timescale=2, nclip=10):
     rows = []
     cols = []
-    vals = [np.float64(x) for x in range(0)]
+    vals = [np.float64(x) for x in range(0)]  # typed-empty float64 list (numba cannot infer []'s element type)
     windowstart = 0
     for i, ti in enumerate(t):
         dt = ti - t[windowstart]
@@ -484,7 +465,7 @@ def weighted_moving_average_gaussian(y, t, errors, timescale=2):
             weighted_moving_average_err(weights, windows, windowsXweights),
             weighted_moving_average_scatter(y, wma, weights, windows, windowsXweights))
 
-# @njit
+# not njit: builds a scipy.sparse matrix, which numba does not support
 def weighted_moving_average_sparse_gaussian(y, t, errors, timescale=2):
     windows = sparse_gaussian_window(t, timescale, nclip=1)
     weights = 1/errors**2
@@ -546,13 +527,15 @@ def find_persistent_excursions(df, outliers_cutoff=3, cut_outliers=False,
     wma, errs, scatter = weighted_moving_average_df(df, timescale=timescale)
     if usescatter:
         errs = np.sqrt(errs**2 + scatter**2)
-    # excursions = wma < -sigma*std
+    # A brightening lowers the magnitude, so a real event appears as a negative
+    # delta-mag excursion below -z_threshold sigma (errs includes the local
+    # scatter when usescatter is set).
     excursions = wma / np.sqrt(std**2 + errs**2) < -z_threshold
 
     if restrict_to_indices is not None:
         excursions = excursions & df.index.isin(restrict_to_indices)
-    # print(excursions)
-    # print(np.where(np.concatenate([[excursions[0]],np.diff(excursions), [True]]))[0])
+    # np.split breaks the index at every True/False transition into alternating
+    # runs; take every other run starting at the first True run.
     excursion_regions = np.split(df.index, 
                                  np.where(np.concatenate([[False],
                                           np.diff(excursions)]))[0])[int(not excursions[0])::2]
@@ -566,12 +549,6 @@ def find_persistent_excursions(df, outliers_cutoff=3, cut_outliers=False,
         duration_condition = (exc_end - exc_start >= duration)
         if not duration_condition:
             continue
-        # revisit_condition = (np.diff(df.loc[region,'mjd']) <= revisit_time).all()
-        # if not revisit_condition:
-        #     continue
-        # achromatic_condition = is_achromatic(df.loc[region],sigma=achromatic_sigma)
-        # if not achromatic_condition:
-        #     continue
         valid_regions.append(region)
     return valid_regions
 
@@ -665,16 +642,8 @@ def compute_file_map(files):
     return objfilemap, fileenum
 
 def extend_lc(df, region, context_size = 100):
-    """_summary_
-
-    Args:
-        df (_type_): A lightcurve sorted by 'mjd'
-        region (_type_): _description_
-        context_size (int, optional): _description_. Defaults to 100.
-
-    Returns:
-        _type_: _description_
-    """
+    """Return the indices of df within context_size days of the region's time
+    span (region assumed sorted by 'mjd')."""
     estart, eend = df.loc[region,'mjd'].min(), df.loc[region,'mjd'].max()
     return df[(df['mjd']> estart-context_size) & (df['mjd'] < eend+context_size)].index
 
@@ -706,15 +675,11 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit = 1
                 std = np.std(no_outliers['deltamag'].to_numpy())
                 ext_region_full_df['magerr_auto'] = np.sqrt(ext_region_full_df['magerr_auto']**2
                                                             + (std*temper_errors)**2)
-                # cut_mask = nsctools.reject_low_error_outliers_args(ext_region_full_df['deltamag'].to_numpy(),
-                #                                          ext_region_full_df['magerr_auto'].to_numpy(),20)
-
-                ext_region_df = ext_region_full_df#.iloc[cut_mask]
+                ext_region_df = ext_region_full_df
 
                 dms = ext_region_df['deltamag'].to_numpy()
                 errs = ext_region_df['magerr_auto'].to_numpy()
                 mjds = ext_region_df['mjd'].to_numpy()
-                # filters = ext_region_df['filter'].to_numpy()
 
                 try:
                     with warnings.catch_warnings(action="ignore"):
@@ -741,6 +706,10 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit = 1
                 fitmags = ml_f(mjds,*fitp)
                 outside_fit_df = df.loc[df.index.difference(ext_region_full_df.index)]
 
+                # Compare the PSPL-fit residuals to the out-of-event photometry
+                # with a weighted two-sample KS test; when too few points lie
+                # outside the event, use a synthetic Gaussian reference of the
+                # same weighted residual scatter instead.
                 if len(outside_fit_df) > n_min_outside_fit:
                     kstwosided = True
                     outside_fit_dms = outside_fit_df['deltamag'].to_numpy()
@@ -789,9 +758,6 @@ def make_fit_excursions_df(fitresults):
         data['two_sample'].append(v[6])
 
     return pd.DataFrame(data)
-
-    # sfitdf = fitdf[['ml' in id for id in fitdf['objectid']]]
-    # rfitdf = fitdf.loc[fitdf.index.difference(sfitdf.index)]
 
 def search_for_params(files, params):
     finds = []
@@ -846,8 +812,9 @@ def cut_high_points_low_p(df, npoints, pval):
     return df[(df['pval'] >= pval) | ((df['n_fit'] + df['n_out'])<npoints)]
 def cut_high_points_inout_low_p(df, npoints, pval):
     return df[(df['pval'] >= pval) | ((df['n_fit']<npoints) |  (df['n_out']<npoints))]
-# def cut_percent_coverage(df)
 def cut_pcov(df, cond_lim=10**5):
+    # cond_num is the 2-norm condition number of the fit covariance; a large
+    # value flags a degenerate / under-constrained PSPL fit. Default 1e5.
     return df[df['cond_num'] < cond_lim]
 def cut_crossing_time(df, timemin=1, timemax=None):
     if timemax is not None:
