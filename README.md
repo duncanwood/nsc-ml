@@ -11,9 +11,10 @@ Kolmogorov-Smirnov test against the out-of-event photometry. Synthetic events
 injected from a population model provide the recovery/contamination yardstick
 for tuning the selection cuts.
 
-Developed for the NOIRLab Source Catalog (NSC) as part of a physics PhD. The
-scientific core is a pair of `numba`-compiled windowed weighted-moving-average
-kernels; the rest is a parquet-backed batch pipeline.
+I wrote this for my [dissertation](https://escholarship.org/uc/item/9g81m0j9),
+running on NOIRLab Source Catalog (NSC) photometry. The scientific core is a
+pair of `numba`-compiled windowed weighted-moving-average kernels, and the rest
+is a parquet-backed batch pipeline.
 
 > Status: research code. It is currently coupled to the NSC schema and works in
 > magnitudes. See [PORTABILITY.md](PORTABILITY.md) for what it takes to run on
@@ -76,7 +77,7 @@ kept = nscml.cut_pcov(nscml.cut_by_pval(fitdf, 0.05)) # apply selection cuts
 ```
 
 `fit_excursions` and `generate_synthetic_microlensing_events_from_population`
-take an `rng=` argument (a `numpy.random.Generator`); pass a seeded one for
+take an `rng=` argument (a `numpy.random.Generator`). Pass a seeded one for
 reproducible results. See [MAP.md](MAP.md) for the full public API, the kernels,
 the cuts, and the file-pipeline functions.
 
@@ -99,8 +100,8 @@ canonical = from_lsst(diasource_df, LSST_DIASOURCE_SCHEMA, template_flux_col='te
 ```
 
 Under the hood that is `normalize` (`s = F/F_ref - 1`, an achromatic *positive*
-bump) -> `find_persistent_excursions(space='flux')` -> `fit_excursions(space='flux')`;
-call those directly for finer control. `nscml.flux_to_mag(flux_df, schema)` is the
+bump) -> `find_persistent_excursions(space='flux')` -> `fit_excursions(space='flux')`.
+Call those directly for finer control. `nscml.flux_to_mag(flux_df, schema)` is the
 alternative (lossy) flux->mag ingest, kept as a comparison baseline.
 
 See **[examples/lsst_quickstart.py](examples/lsst_quickstart.py)** for a runnable
@@ -117,7 +118,7 @@ python -m pytest                # unit, golden parity, integration
 The suite captures golden outputs from the committed code and asserts the
 kernels and seeded paths reproduce them exactly (and the float pipeline within a
 tight tolerance). `tests/fixtures/real_objects.parquet` (four real NSC objects)
-keeps the suite self-contained -- no large data file or network needed.
+keeps the suite self-contained, no large data file or network needed.
 
 ## Repository map
 
@@ -134,9 +135,9 @@ keeps the suite self-contained -- no large data file or network needed.
 
 The git tag **`original-behavior`** marks the last commit bit-identical to the
 pre-refactor pipeline. A single later change (injecting a `numpy` Generator)
-alters only the small-sample KS reference; everything else is unchanged. See the
+alters only the small-sample KS reference. Everything else is unchanged. See the
 tag annotation (`git show original-behavior`) for details.
 
 ## Use
 
-Research code; no license set yet -- please ask before reuse.
+Research code, no license yet. Please ask before reuse.
