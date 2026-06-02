@@ -19,6 +19,35 @@ from numba import njit
 
 import tqdm
 
+# --- Science-bearing default parameters -------------------------------------
+# The magic numbers from the function signatures below, gathered in one place.
+# The numba kernels keep their own primitive defaults (timescale=2, nclip=10);
+# the detector deliberately uses DETECTION_TIMESCALE_DAYS instead.
+
+# Well-sampled region selection (well_sampled_region and its mappers):
+WS_INTERVAL_DAYS = 50.          # min baseline a region must span
+WS_MAX_REVISIT_DAYS = 10        # max gap between consecutive epochs in a region
+WS_SEQ_LEN = 5                  # min epochs in a region
+
+# Persistent-excursion detector (find_persistent_excursions):
+OUTLIERS_CUTOFF = 3             # MAD sigma for the baseline-scatter estimate
+OUTLIERS_CUTOFF_DATA = 20       # MAD sigma for the optional low-error pre-cut
+Z_THRESHOLD = 3                 # excursion significance threshold (sigma)
+DETECTION_TIMESCALE_DAYS = 5    # WMA smoothing scale used in detection
+N_MEASURED = 4                  # min epochs in an excursion
+DURATION_DAYS = 5               # min time span of an excursion (days)
+
+# PSPL fitting (fit_excursions):
+N_MIN_OUTSIDE_FIT = 10          # below this, KS uses a synthetic Gaussian reference
+N_KS_GAUSSIAN = 10000           # synthetic-reference sample size
+CONTEXT_SIZE_DAYS = 100         # padding around an excursion for the fit window
+CROSSING_TIME_GUESS_DAYS = 40   # initial Einstein crossing time (days)
+TEMPER_ERRORS_FIT = 1           # error-tempering factor applied during fitting
+FIT_TIME_PAD_DAYS = 365 * 10    # t0/tE curve_fit bound padding (10 yr)
+
+# Post-fit selection cuts:
+COND_LIM = 10**5                # max fit-covariance condition number (cut_pcov)
+
 color_filter = {
     'u':'blue',
     'g':'green',
@@ -87,7 +116,8 @@ def convert_to_range_index(idxs):
     else:
         return idxs
 
-def well_sampled_region(df: pd.DataFrame, interval=50., maxrevisit=10, seqlen=5):
+def well_sampled_region(df: pd.DataFrame, interval=WS_INTERVAL_DAYS,
+                        maxrevisit=WS_MAX_REVISIT_DAYS, seqlen=WS_SEQ_LEN):
     df = df.sort_values('mjd')
     times = df['mjd'].to_numpy()
     valid_regions = []
@@ -103,7 +133,8 @@ def get_well_sampled_objects(df, progress=False):
     well_sampled_objects = {}
     for obj in tqdm.tqdm(list(gb.groups.keys()), disable=(not progress)):
         objdf = gb.get_group(obj)
-        regions = well_sampled_region(objdf, interval=50, maxrevisit=10, seqlen=5)
+        regions = well_sampled_region(objdf, interval=WS_INTERVAL_DAYS,
+                                       maxrevisit=WS_MAX_REVISIT_DAYS, seqlen=WS_SEQ_LEN)
         well_sampled_objects[obj] = regions
     return well_sampled_objects
 
@@ -112,7 +143,8 @@ def get_just_well_sampled_objects(df, progress=False):
     well_sampled_objects = {}
     for obj in tqdm.tqdm(list(gb.groups.keys()), disable=(not progress)):
         objdf = gb.get_group(obj)
-        regions = well_sampled_region(objdf, interval=50, maxrevisit=10, seqlen=5)
+        regions = well_sampled_region(objdf, interval=WS_INTERVAL_DAYS,
+                                       maxrevisit=WS_MAX_REVISIT_DAYS, seqlen=WS_SEQ_LEN)
         if len(regions) > 0:
             well_sampled_objects[obj] = regions
     return well_sampled_objects
@@ -507,10 +539,10 @@ def strip_objid(objid):
     m = re.search(r'(\w+)_ml_', objid)
     return m.group(1)
 
-def find_persistent_excursions(df, outliers_cutoff=3, cut_outliers=False,
-        outliers_cutoff_data=20,
-        z_threshold=3, timescale=5, n_measured=4, 
-        duration=5, restrict_to_indices=None, usescatter=True,
+def find_persistent_excursions(df, outliers_cutoff=OUTLIERS_CUTOFF, cut_outliers=False,
+        outliers_cutoff_data=OUTLIERS_CUTOFF_DATA,
+        z_threshold=Z_THRESHOLD, timescale=DETECTION_TIMESCALE_DAYS, n_measured=N_MEASURED,
+        duration=DURATION_DAYS, restrict_to_indices=None, usescatter=True,
         temper_errors=None):
     df = df.sort_values('mjd')
 
@@ -641,7 +673,7 @@ def compute_file_map(files):
             objfilemap[objid]=i
     return objfilemap, fileenum
 
-def extend_lc(df, region, context_size = 100):
+def extend_lc(df, region, context_size=CONTEXT_SIZE_DAYS):
     """Return the indices of df within context_size days of the region's time
     span (region assumed sorted by 'mjd')."""
     estart, eend = df.loc[region,'mjd'].min(), df.loc[region,'mjd'].max()
@@ -649,9 +681,9 @@ def extend_lc(df, region, context_size = 100):
 
 
 
-def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit = 10, 
-                   outliers_cutoff=3, temper_errors=1, n_ks_gaussian=10000,
-                   context_size=100, crossing_time_guess=40):
+def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_MIN_OUTSIDE_FIT,
+                   outliers_cutoff=OUTLIERS_CUTOFF, temper_errors=TEMPER_ERRORS_FIT, n_ks_gaussian=N_KS_GAUSSIAN,
+                   context_size=CONTEXT_SIZE_DAYS, crossing_time_guess=CROSSING_TIME_GUESS_DAYS):
     
     fitresults = []
     fitfails = []
@@ -689,8 +721,8 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit = 1
                                         absolute_sigma=True,
                                         x_scale=[1, crossing_time_guess, 
                                                  np.diff(np.percentile(mjds,(0,100)))],
-                                        bounds=([0,1, mjds[0]-365*10],
-                                                [5,365*10, mjds[-1]+365*10]),
+                                        bounds=([0, 1, mjds[0] - FIT_TIME_PAD_DAYS],
+                                                [5, FIT_TIME_PAD_DAYS, mjds[-1] + FIT_TIME_PAD_DAYS]),
                                         jac=ml_jac)
                 except RuntimeError:
                     fitfails.append((objid, i))
@@ -812,7 +844,7 @@ def cut_high_points_low_p(df, npoints, pval):
     return df[(df['pval'] >= pval) | ((df['n_fit'] + df['n_out'])<npoints)]
 def cut_high_points_inout_low_p(df, npoints, pval):
     return df[(df['pval'] >= pval) | ((df['n_fit']<npoints) |  (df['n_out']<npoints))]
-def cut_pcov(df, cond_lim=10**5):
+def cut_pcov(df, cond_lim=COND_LIM):
     # cond_num is the 2-norm condition number of the fit covariance; a large
     # value flags a degenerate / under-constrained PSPL fit. Default 1e5.
     return df[df['cond_num'] < cond_lim]
