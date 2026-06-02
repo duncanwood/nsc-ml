@@ -7,7 +7,6 @@ import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
 from matplotlib.cm import ScalarMappable
 import pandas as pd
-# from nsctools import *
 from . import nsctools
 from .nsctools import color_filter, marker_map
 
@@ -92,7 +91,6 @@ def plot_pval_hist(fitdf: pd.DataFrame, maxcolor=None):
                  + ' PSPL fit subtraction in synthetic ML events')
     plt.xlabel('p-value')
     plt.ylabel('Counts')
-    # plt.show()
     return fig, axes, cbar
 
 
@@ -124,15 +122,13 @@ def plot_deltamags(lc: pd.DataFrame, **kwargs):
     id = lc['objectid'].unique()
     assert len(id)==1
     id = str(id[0])
-    # fig, ax = plt.subplots()
     gb = lc.groupby(['filter', 'instrument'], observed=True)
     for f, instrument in gb.groups.keys():
         f_df = lc[lc['filter']==f]
         plt.errorbar(f_df['mjd'], f_df['deltamag'], f_df['magerr_auto'],
                      c=color_filter[f.lower()],linestyle='None', 
                      markersize=5, marker=marker_map[instrument], capsize=0)
-        # plt.hlines(f_df[f.lower()+'mag'], f_df['mjd'].to_numpy().min(),f_df['mjd'].to_numpy().max() , color=color_filter[f], linestyle='dashed')
-    patches = [ mpatches.Patch(color=color_filter[f.lower()], label=f)  
+    patches = [ mpatches.Patch(color=color_filter[f.lower()], label=f)
                 for f in lc['filter'].unique() ]
     points = [  Line2D([0], [0], label=instrument, 
                         marker=marker_map[instrument], markersize=10,  
@@ -173,7 +169,6 @@ def plot_weighted_moving_average_df(df, usescatter=True, timescale=2, outliers_c
         confidence = np.sqrt(errs**2 + std**2)
     plt.plot(t,wma, linestyle='dotted')
     plt.fill_between(t,wma-confidence,wma+confidence, alpha=.2)
-    # plt.fill_between(t,weighted_moving_average(d-e, t, e, timescale=2), weighted_moving_average(d+e, t, e, timescale=2), alpha=.2)
 
 def plot_excursion_region(lc, region, timescale=2, context_size=100, **kwargs):
     xlims = np.percentile(lc.loc[region,'mjd'].to_numpy(),(0,100)) \
@@ -220,10 +215,7 @@ def plot_example_fits(fulldf, all_excursions, fitresults,
         
         extended_region = nsctools.extend_lc(df, region)
         ext_region_df = df.loc[extended_region].sort_values('mjd')
-        # dms = ext_region_df['deltamag'].to_numpy()
-        # errs = ext_region_df['magerr_auto'].to_numpy()
         mjds = ext_region_df['mjd'].to_numpy()
-        # filters = ext_region_df['filter'].to_numpy()
         mjds = np.linspace(mjds[0], mjds[-1],200)
 
         fitmags = nsctools.ml_f(mjds,*fitinfo)
