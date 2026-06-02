@@ -78,6 +78,25 @@ take an `rng=` argument (a `numpy.random.Generator`); pass a seeded one for
 reproducible results. See [MAP.md](MAP.md) for the full public API, the kernels,
 the cuts, and the file-pipeline functions.
 
+## Flux surveys (e.g. Rubin LSST)
+
+The detector defaults to magnitudes (NSC). For flux data (LSST forced
+photometry is nanojansky and can be negative) use the fractional-flux mode,
+which keeps the achromatic cross-band pooling that makes the method work:
+
+```python
+schema = nscml.LightcurveSchema(id='objectId', time='mjd', band='band',
+                                measurement='psfFlux', error='psfFluxErr',
+                                value=None, space='flux')
+frame = nscml.normalize(flux_df, schema)                       # s = F/F_ref - 1
+regions = nscml.find_persistent_excursions(frame, space='flux')   # positive bump
+# fits use space='flux' too: nscml.fit_excursions(..., space='flux')
+```
+
+`nscml.flux_to_mag(flux_df, schema)` is the alternative (lossy) flux->mag
+ingest, kept as a comparison baseline. See [PORTABILITY.md](PORTABILITY.md) for
+the design, the achromaticity argument, and the remaining LSST adapter work.
+
 ## Tests
 
 ```bash

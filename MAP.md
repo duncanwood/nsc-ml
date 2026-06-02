@@ -47,6 +47,12 @@ Detection runs on `deltamag` vs `mjd` only and is band-agnostic; a brightening
 appears as a NEGATIVE `deltamag` excursion. Files are parquet; intermediate
 search/fit results are pickled.
 
+In flux mode (`space='flux'`, for surveys like Rubin LSST) the same canonical
+columns instead carry the achromatic **fractional flux** `s = F/F_ref - 1` and
+its error, and an event is a POSITIVE excursion (`nscml.normalize(df,
+schema_flux)` builds it; pass `space='flux'` to the detector/fit). See
+PORTABILITY.md.
+
 ## Numba kernels (`@njit`)
 
 The scientific core. All operate on plain float64 arrays with `mjd` sorted
@@ -56,7 +62,8 @@ ascending.
 |---|---|---|
 | `microlensing_amplification(t, u0, tE, t0, blend=1)` | A(t) | PSPL/Paczynski magnification; `u` = source-lens separation in Einstein radii |
 | `amp_to_mag(amp)` | -2.5 log10(amp) | magnitude offset of an amplification |
-| `ml_f(*x)` | mag | model fit function = `amp_to_mag(microlensing_amplification(*x))` |
+| `ml_f(*x)` | mag | mag model fit function = `amp_to_mag(microlensing_amplification(*x))` |
+| `ml_f_flux(*x)` | flux | flux model = `microlensing_amplification(*x) - 1` (fractional flux; used when `space='flux'`) |
 | `ml_jac(t, u0, tE, t0)` | (n,3) | analytic Jacobian in `curve_fit` p0 order |
 | `sparse_gaussian_wma(y, t, w, timescale, nclip)` | (wma, err, scatter) | **windowed weighted moving average**; sliding window truncated at `nclip*timescale`, ~O(n*window) |
 | `sparse_gaussian_wms(y, t, w, wma, ...)` | scatter | **windowed weighted moving scatter** (called by the above) |
