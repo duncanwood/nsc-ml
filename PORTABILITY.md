@@ -210,11 +210,13 @@ is still TODO (Phase 2.5).
   there.)
 - **Phase 2 (flux/Rubin) -- DONE (detection core).** `space='flux'`
   fractional-flux detection + fit, and the `flux_to_mag` baseline (section 2);
-  mag goldens byte-identical; 7 new tests. **Still TODO:** the `from_lsst`
-  adapter (map ForcedSource/DiaSource columns + supply a positive `F_ref`),
-  multiplicative synthetic injection in flux (`add_microlensing_event`/
-  `generate_synthetic` flux mode), cadence/population retune, and validation on
-  DP0.2.
+  mag goldens byte-identical; 7 new tests. The `from_lsst` adapter
+  (`nscml/surveys/lsst.py`: ForcedSource/DiaSource -> fractional flux, with a
+  `template_flux_col` supplying a positive `F_ref` for difference flux) is built
+  and synthetic-tested (5 tests). **Still TODO:** multiplicative synthetic
+  injection in flux (`add_microlensing_event`/`generate_synthetic` flux mode),
+  cadence/population retune, and end-to-end validation on the public DP0.2 (RSP
+  access -- no local Rubin data on the dev machine).
 - **Phase 3:** high-level `detect()` in-memory API; LSST example notebook; CI;
   docstrings/docs.
 
