@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 import nscml
+import fixture_build as fb
 
 
 def _meta(outdir):
@@ -48,9 +49,8 @@ def test_search_writes_consolidated_pickle(search_results, tmp_path):
 def test_fit_and_cuts(working, tmp_path, search_results):
     _, _, excursions = search_results
     meta = _meta(str(tmp_path))
-    np.random.seed(0)
     fitresults, fitfails, fitdups = nscml.fit_excursions(
-        excursions, [working['mini_lc']], dict(meta), {})
+        excursions, [working['mini_lc']], dict(meta), {}, rng=np.random.default_rng(0))
     fitdf = nscml.make_fit_excursions_df(fitresults)
 
     assert list(fitdf.columns) == ['objectid', 'excnum', 'pval', 'n_fit', 'n_out',
@@ -71,8 +71,8 @@ def test_fit_and_cuts(working, tmp_path, search_results):
 def test_fit_results_pickle_roundtrip(working, tmp_path, search_results):
     _, _, excursions = search_results
     meta = _meta(str(tmp_path))
-    np.random.seed(0)
-    nscml.fit_excursions(excursions, [working['mini_lc']], dict(meta), {})
+    nscml.fit_excursions(excursions, [working['mini_lc']], dict(meta), {},
+                         rng=np.random.default_rng(0))
     out = os.path.join(meta['outdir'], meta['fitoutfile'])
     assert os.path.exists(out)
     with open(out, 'rb') as f:
@@ -97,3 +97,23 @@ def test_combined_driver_rejects_unknown_param(working, tmp_path):
         nscml.search_files_for_microlensing_events(
             [working['mini_lc']], working['ws_regions_obj'],
             _meta(str(tmp_path)), {'not_a_real_param': 1})
+
+
+def test_fit_excursions_rng_is_reproducible(tmp_path):
+    """The injected Generator controls the small-sample KS reference: same seed
+    reproduces, different seed differs (validates the RNG-injection fix)."""
+    lc = fb.small_sample_lc()
+    p = os.path.join(str(tmp_path), 'small.parquet')
+    lc.to_parquet(p)
+    excs = {'small_0': nscml.find_persistent_excursions(lc)}
+    meta = _meta(tmp_path)
+
+    def run(seed):
+        fr, _, _ = nscml.fit_excursions(excs, [p], dict(meta), {},
+                                        rng=np.random.default_rng(seed))
+        return nscml.make_fit_excursions_df(fr)
+
+    a, b, c = run(0), run(0), run(1)
+    assert not a['two_sample'].any()  # confirms the RNG (small-sample) branch is hit
+    np.testing.assert_array_equal(a['pval'].to_numpy(), b['pval'].to_numpy())
+    assert not np.allclose(a['pval'].to_numpy(), c['pval'].to_numpy())
