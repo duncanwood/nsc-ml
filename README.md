@@ -1,5 +1,7 @@
 # nsc-ml
 
+[![tests](https://github.com/duncanwood/nsc-ml/actions/workflows/tests.yml/badge.svg)](https://github.com/duncanwood/nsc-ml/actions/workflows/tests.yml)
+
 Multi-band time-series outlier detection for finding gravitational
 **microlensing** events in survey photometry. The detector flags persistent,
 achromatic brightenings ("excursions") in a weighted moving average of each
