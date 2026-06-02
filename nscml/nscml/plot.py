@@ -10,6 +10,16 @@ import pandas as pd
 from . import nsctools
 from .nsctools import color_filter, marker_map
 
+# Explicit public API so `from .plot import *` (in __init__) does not leak the
+# imported matplotlib/numpy/pandas names into the package namespace.
+__all__ = [
+    'rows_in_bin', 'bin_func', 'mean_of_col', 'std_of_col', 'perc_of_col',
+    'compare_cut_fn', 'compare_cut', 'compare_cut_2', 'plot_hist_color',
+    'plot_pval_hist', 'plot_lc', 'plot_obj', 'plot_deltamags', 'plot_obj_dm',
+    'plot_weighted_moving_average_df', 'plot_excursion_region',
+    'plot_example_fits',
+]
+
 def rows_in_bin(df, col, minval, maxval):
     return df[(df[col] >= minval) & (df[col] < maxval)]
 def bin_func(df: pd.DataFrame, col, bins, func, *args):
