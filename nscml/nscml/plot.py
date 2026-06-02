@@ -1,3 +1,5 @@
+import time
+import os
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -154,17 +156,21 @@ def plot_deltamags(lc: pd.DataFrame, **kwargs):
 def plot_obj_dm(id: str, dmgroupby, **kwargs):
     plot_deltamags(dmgroupby.get_group(id), **kwargs)
 
-def plot_weighted_moving_average_df(df, usescatter=True, timescale=2, **kwargs):
+def plot_weighted_moving_average_df(df, usescatter=True, timescale=2, outliers_cutoff=3, **kwargs):
     df=df.sort_values('mjd')
     d=df['deltamag'].to_numpy()
     e=df['magerr_auto'].to_numpy()
     t=df['mjd'].to_numpy()
     plot_deltamags(df, **kwargs)
     wma, errs, scatter = nsctools.weighted_moving_average(d, t, e, timescale=timescale)
+
+    no_outliers = df.iloc[nsctools.reject_outliers_args(df['deltamag'].to_numpy(), outliers_cutoff)]
+    std = np.std(no_outliers['deltamag'].to_numpy())
+
     if usescatter:
-        confidence = np.sqrt(errs**2 + scatter**2)
+        confidence = np.sqrt(errs**2 + scatter**2 + std**2)
     else: 
-        confidence = errs
+        confidence = np.sqrt(errs**2 + std**2)
     plt.plot(t,wma, linestyle='dotted')
     plt.fill_between(t,wma-confidence,wma+confidence, alpha=.2)
     # plt.fill_between(t,weighted_moving_average(d-e, t, e, timescale=2), weighted_moving_average(d+e, t, e, timescale=2), alpha=.2)
@@ -182,9 +188,18 @@ def plot_excursion_region(lc, region, timescale=2, context_size=100, **kwargs):
 
 
 def plot_example_fits(fulldf, all_excursions, fitresults, 
-                      fileenum, objfilemap, limitnum=10):
-    plotidx= np.random.choice(list(fulldf.index), min(limitnum, len(fulldf)), 
+                      fileenum, objfilemap, limitnum=10,outdir=None,
+                      show=True):
+    if limitnum is None:
+        plotidx = list(fulldf.index)
+    else:
+        plotidx= np.random.choice(list(fulldf.index), min(limitnum, len(fulldf)), 
                               replace=False)
+
+    if not (outdir is None):
+        if not show:
+            raise ValueError('Neither showing nor saving plots')
+        os.makedirs(outdir, exist_ok=True)
     for idx in plotidx:
         obj = fulldf.loc[idx]['objectid']
         exc_idx = fulldf.loc[idx]['excnum']
@@ -195,7 +210,13 @@ def plot_example_fits(fulldf, all_excursions, fitresults,
         df = nsctools.float_cols_to_double(df)
         print(obj)    
 
-        plot_excursion_region(df[df['objectid']==obj], region, context_size=30, timescale=5)
+
+        fitresult = [result for result in fitresults if result[0] ==obj][exc_idx]
+        fitinfo = fitresult[3][0]
+        crossingtime = fitinfo[1]
+        print(fitinfo)
+
+        plot_excursion_region(df[df['objectid']==obj], region, context_size=max(crossingtime,20), timescale=5)
         
         extended_region = nsctools.extend_lc(df, region)
         ext_region_df = df.loc[extended_region].sort_values('mjd')
@@ -205,12 +226,23 @@ def plot_example_fits(fulldf, all_excursions, fitresults,
         # filters = ext_region_df['filter'].to_numpy()
         mjds = np.linspace(mjds[0], mjds[-1],200)
 
-        fitresult = [result for result in fitresults if result[0] ==obj][exc_idx]
-        fitinfo = fitresult[3][0]
-        print(fitresult)
         fitmags = nsctools.ml_f(mjds,*fitinfo)
         plt.plot(mjds, fitmags,c='black', linestyle='dashed',marker='None', label='PSPL fit')
 
-        plt.show()
+        handles = [mpatches.Rectangle((0, 0), 1, 1, fc="white", ec="white", 
+                                 lw=0, alpha=0)] * 2
+
+        labels=[]
+        labels.append(f'Condition number: {fulldf.loc[idx]["cond_num"]:.2e}')
+        labels.append(f'\np-value: {fulldf.loc[idx]["pval"]:.2e}')
+        plt.gca().legend(handles, labels, loc='best', fontsize='small', 
+          fancybox=True, framealpha=0.7, 
+          handlelength=0, handletextpad=0)
+
+        if not (outdir is None):
+            plt.savefig(outdir+f'/{obj}_excursion.pdf')
+        if show:
+
+            plt.show()
         plt.clf()
         plt.close("all")

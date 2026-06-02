@@ -1,5 +1,6 @@
-nsctools.py
 setup.py
+nscml/__init__.py
+nscml/plot.py
 nscml.egg-info/PKG-INFO
 nscml.egg-info/SOURCES.txt
 nscml.egg-info/dependency_links.txt
