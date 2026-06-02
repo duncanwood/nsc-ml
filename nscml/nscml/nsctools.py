@@ -239,7 +239,7 @@ def generate_synthetic_microlensing_events_from_population(
     else:
         raise ValueError(f'Unsupported type for events_file: {type(events_file)}')
 
-    outsubdir = outdir + f'/synth-{outname}/'
+    outsubdir = os.path.join(outdir, f'synth-{outname}')
     os.makedirs(outsubdir, exist_ok=True)
     outinfo = {'lcfiles': lcfiles, 
                  'events_file': events_file, 
@@ -249,7 +249,7 @@ def generate_synthetic_microlensing_events_from_population(
     object_event_list = []
 
     for file in tqdm.tqdm(lcfiles):
-        filename = file.split('/')[-1]
+        filename = os.path.basename(file)
         synthfile = '.'.join(filename.split('.')[:-1]) + f'-synth-{outname}.parquet'
         
         df = pd.read_parquet(file)
@@ -278,7 +278,7 @@ def generate_synthetic_microlensing_events_from_population(
 
 
 
-        outpath =  outsubdir + synthfile
+        outpath = os.path.join(outsubdir, synthfile)
         bigdf = pd.concat(mldfs)
         bigdf['exposure'] = bigdf['exposure'].astype('category')
         bigdf['filter'] = bigdf['filter'].astype('category')
@@ -289,7 +289,7 @@ def generate_synthetic_microlensing_events_from_population(
         del df, bigdf
         
     object_event_df = pd.DataFrame.from_dict(object_event_list)
-    with open(outsubdir + f'synth-{outname}-info.pickle', 'wb') as f:
+    with open(os.path.join(outsubdir, f'synth-{outname}-info.pickle'), 'wb') as f:
         pickle.dump((outinfo, object_event_df), f)
     
    
@@ -594,9 +594,9 @@ def search_files_for_excursions(lcfiles: Iterable[str],
     if 'outdir' in metadata:
         outdir = metadata['outdir']
     else:
-        outdir = '/'.join(lcfiles[0].split('/')[:-1])+'/searches/'
+        outdir = os.path.join(os.path.dirname(lcfiles[0]), 'searches')
         metadata['outdir'] = outdir
-    tmpdir = metadata['outdir']+f'/tmp-{timestamp}/'
+    tmpdir = os.path.join(metadata['outdir'], f'tmp-{timestamp}')
     os.makedirs(tmpdir, exist_ok=True)
     
     params = get_default_args(find_persistent_excursions)
@@ -620,8 +620,8 @@ def search_files_for_excursions(lcfiles: Iterable[str],
                        restrict_to_indices=np.concatenate(search_domains[original_id]),
                        **params)
             file_excursions[objid] = excs
-        filename = file.split('/')[-1]
-        tmpfile = tmpdir+filename+'-search.pickle'
+        filename = os.path.basename(file)
+        tmpfile = os.path.join(tmpdir, filename + '-search.pickle')
         with open(tmpfile, 'wb') as f:
             pickle_data = (metadata, params, file_excursions)
             pickle.dump(pickle_data, f)
@@ -648,7 +648,7 @@ def consolidate_search_files_for_excursions(partialfiles):
             print(set(search_params.items())^set(file_search_params.items()))
             return
         excursions.update(file_excursions)
-    with open(metadata['outdir']+metadata['outfile'], 'wb') as f:
+    with open(os.path.join(metadata['outdir'], metadata['outfile']), 'wb') as f:
         pickle_data = (metadata, search_params, excursions)
         pickle.dump(pickle_data, f)
     return pickle_data
@@ -756,7 +756,7 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_M
 
                 fitresults.append([objid, i, ksresult, fitresult, 
                                    ext_region_df.shape[0],len(outside_fit_df), kstwosided])
-    outpath = metadata['outdir']+'/'+metadata['fitoutfile']
+    outpath = os.path.join(metadata['outdir'], metadata['fitoutfile'])
     os.makedirs(metadata['outdir'], exist_ok=True)
     with open(outpath, 'wb') as f:
         pickle.dump((fitresults, fitfails, fitdups, metadata, params), f)
