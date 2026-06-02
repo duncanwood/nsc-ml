@@ -117,3 +117,21 @@ def test_fit_excursions_rng_is_reproducible(tmp_path):
     assert not a['two_sample'].any()  # confirms the RNG (small-sample) branch is hit
     np.testing.assert_array_equal(a['pval'].to_numpy(), b['pval'].to_numpy())
     assert not np.allclose(a['pval'].to_numpy(), c['pval'].to_numpy())
+
+
+def test_fit_excursions_context_size_controls_window(tmp_path):
+    """context_size now flows through to extend_lc (it was previously ignored,
+    so the fit window was always the 100-day default): a larger padding pulls
+    more epochs into the fit."""
+    lc = fb.small_sample_lc()
+    p = os.path.join(str(tmp_path), 'small.parquet')
+    lc.to_parquet(p)
+    excs = {'small_0': nscml.find_persistent_excursions(lc)}
+    meta = _meta(tmp_path)
+
+    def n_fit(cs):
+        fr, _, _ = nscml.fit_excursions(excs, [p], dict(meta), {}, context_size=cs,
+                                        rng=np.random.default_rng(0))
+        return int(nscml.make_fit_excursions_df(fr)['n_fit'].iloc[0])
+
+    assert n_fit(10) < n_fit(30) < n_fit(100)

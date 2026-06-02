@@ -730,7 +730,7 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_M
             objfits = []
             for i, region in enumerate(excursions[objid]):
                 
-                extended_region = extend_lc(df, region)
+                extended_region = extend_lc(df, region, context_size)
                 ext_region_full_df = df.loc[extended_region].sort_values('mjd')
 
                 no_outliers = df.iloc[reject_outliers_args(df['deltamag'].to_numpy(), outliers_cutoff)]
