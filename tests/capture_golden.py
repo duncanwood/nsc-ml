@@ -122,9 +122,8 @@ def capture_pipeline():
         lcfiles, ws_regions, dict(meta), {})
     exc_ser = {str(k): [[int(i) for i in r] for r in v] for k, v in excursions.items()}
 
-    np.random.seed(0)  # seeds the small-sample np.random.normal branch if hit
     fitresults, fitfails, fitdups = nscml.fit_excursions(
-        excursions, lcfiles, dict(meta), {})
+        excursions, lcfiles, dict(meta), {}, rng=np.random.default_rng(0))
     fitdf = nscml.make_fit_excursions_df(fitresults)
 
     payload = {
@@ -148,8 +147,8 @@ def capture_pipeline_small():
     lc.to_parquet(p)
     excs = {'small_0': nscml.find_persistent_excursions(lc)}
     meta = {'outdir': tmp, 'outfile': 'search.pickle', 'fitoutfile': 'fits.pickle'}
-    np.random.seed(0)  # the small-sample branch draws np.random.normal
-    fitresults, fitfails, fitdups = nscml.fit_excursions(excs, [p], dict(meta), {})
+    fitresults, fitfails, fitdups = nscml.fit_excursions(
+        excs, [p], dict(meta), {}, rng=np.random.default_rng(0))
     fitdf = nscml.make_fit_excursions_df(fitresults)
     # guard against a vacuous golden: the branch under test must be reached
     assert len(fitdf) > 0 and not fitdf['two_sample'].any(), (
@@ -176,9 +175,8 @@ def capture_synth():
     ws_regions = {rid: fb._well_sampled(rb[rb['objectid'] == rid])
                   for rid in fb.REAL_OBJECT_IDS}
 
-    with fb.seeded_synth_rng(0):
-        nscml.generate_synthetic_microlensing_events_from_population(
-            [real_path], events, ws_regions, tmp, 'gold')
+    nscml.generate_synthetic_microlensing_events_from_population(
+        [real_path], events, ws_regions, tmp, 'gold', rng=np.random.default_rng(0))
     info_pkl = os.path.join(tmp, 'synth-gold', 'synth-gold-info.pickle')
     with open(info_pkl, 'rb') as f:
         _, object_event_df = pickle.load(f)

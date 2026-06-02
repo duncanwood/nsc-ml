@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-import random
 import gc
 import pickle
 import time
@@ -262,7 +261,11 @@ def ml_f(*x):
     return amp_to_mag(microlensing_amplification(*x))
 
 def generate_synthetic_microlensing_events_from_population(
-        lcfiles, events_file, ws_regions, outdir, outname):
+        lcfiles, events_file, ws_regions, outdir, outname, rng=None):
+    # rng: pass a seeded numpy Generator for reproducible event/region draws;
+    # defaults to a fresh (entropy-seeded) Generator.
+    if rng is None:
+        rng = np.random.default_rng()
 
     if isinstance(events_file, str):
         events_df = pd.read_pickle(events_file)
@@ -287,10 +290,10 @@ def generate_synthetic_microlensing_events_from_population(
         df = pd.read_parquet(file)
         gb = df.groupby('objectid',observed=True)
         mldfs = []
-        event_indices = np.random.default_rng().choice(range(events_df.shape[0]), df.shape[0])
+        event_indices = rng.choice(range(events_df.shape[0]), df.shape[0])
         for i, objid in enumerate(tqdm.tqdm(list(gb.groups.keys()), leave=False)):
             lc = gb.get_group(objid)
-            regions = [random.choice(ws_regions[objid])]
+            regions = [ws_regions[objid][rng.integers(len(ws_regions[objid]))]]
             crossing_time, impact_parameter = events_df[['crossing_time', 'umin']].iloc[event_indices[i]]
             crossing_time = crossing_time /24 # recorded in hours, used here in days
 
@@ -706,8 +709,12 @@ def extend_lc(df, region, context_size=CONTEXT_SIZE_DAYS):
 
 def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_MIN_OUTSIDE_FIT,
                    outliers_cutoff=OUTLIERS_CUTOFF, temper_errors=TEMPER_ERRORS_FIT, n_ks_gaussian=N_KS_GAUSSIAN,
-                   context_size=CONTEXT_SIZE_DAYS, crossing_time_guess=CROSSING_TIME_GUESS_DAYS):
-    
+                   context_size=CONTEXT_SIZE_DAYS, crossing_time_guess=CROSSING_TIME_GUESS_DAYS,
+                   rng=None):
+    # rng: pass a seeded numpy Generator for a reproducible small-sample KS
+    # reference; defaults to a fresh (entropy-seeded) Generator.
+    if rng is None:
+        rng = np.random.default_rng()
     fitresults = []
     fitfails = []
     fitdups = []
@@ -773,7 +780,7 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_M
                 else:
                     res_ave, res_std = weighted_avg_and_std(dms-fitmags, 1/errs**2)
                     ksresult = ks_weighted(dms-fitmags, 
-                                           np.random.normal(0 , res_std, n_ks_gaussian), 
+                                           rng.normal(0, res_std, n_ks_gaussian),
                                            1/errs**2, np.ones(n_ks_gaussian)/res_std**2)
                     kstwosided = False
 

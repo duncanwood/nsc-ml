@@ -22,35 +22,13 @@ copy shares those labels. ``build_working_fixtures`` asserts that contract
 holds after the parquet round-trip rather than silently yielding zero
 detections.
 """
-import contextlib
 import os
 import pickle
-import random as _random
 
 import numpy as np
 import pandas as pd
 
 import nscml
-
-
-@contextlib.contextmanager
-def seeded_synth_rng(seed=0):
-    """Make generate_synthetic_microlensing_events_from_population reproducible.
-
-    That function draws event indices with ``np.random.default_rng().choice``
-    and picks regions with stdlib ``random.choice``. The Generator from
-    ``default_rng()`` is seeded from OS entropy and is NOT affected by
-    ``np.random.seed`` -- so reproducing this path requires replacing the
-    default_rng factory with a seeded one (here, test-side; the library is
-    untouched) in addition to seeding stdlib random. See AUDIT.md (RNG).
-    """
-    orig = np.random.default_rng
-    np.random.default_rng = lambda *a, **k: orig(seed)
-    _random.seed(seed)
-    try:
-        yield
-    finally:
-        np.random.default_rng = orig
 
 # Four well-sampled objects (40-54 epochs, ~1500-1900 day baselines, 5-6
 # bands), chosen deterministically as the first such ids in test.parquet.
