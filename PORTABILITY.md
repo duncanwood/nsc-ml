@@ -145,8 +145,12 @@ On a synthetic event (u0=0.2, tE=40, t0=200) the two paths recover consistent
 parameters (tE 38.2 vs 37.6, t0 200.0 vs 200.1) -- see `tests/test_flux_unit.py`.
 Remaining gotcha for real data: `F_ref` must be a positive baseline (template)
 flux, not a difference-image-flux median (the achromaticity assumption's failure
-mode); and `add_microlensing_event`/synthetic injection in flux (multiplicative)
-is still TODO (Phase 2.5).
+mode). Multiplicative synthetic injection in flux is implemented:
+`add_microlensing_event(space='flux')` and
+`generate_synthetic_microlensing_events_from_population(space='flux')` map the
+observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
+`sigma_s -> sigma_s*A` -- the flux twin of the magnitude path's additive
+`-2.5 log10(A)` (which leaves `sigma_mag` unchanged).
 
 ## 3. Running on Rubin LSST -- concrete recipe
 
@@ -213,10 +217,13 @@ is still TODO (Phase 2.5).
   mag goldens byte-identical; 7 new tests. The `from_lsst` adapter
   (`nscml/surveys/lsst.py`: ForcedSource/DiaSource -> fractional flux, with a
   `template_flux_col` supplying a positive `F_ref` for difference flux) is built
-  and synthetic-tested (5 tests). **Still TODO:** multiplicative synthetic
-  injection in flux (`add_microlensing_event`/`generate_synthetic` flux mode),
-  cadence/population retune, and end-to-end validation on the public DP0.2 (RSP
-  access -- no local Rubin data on the dev machine).
+  and synthetic-tested (5 tests). Multiplicative synthetic injection in flux
+  (`add_microlensing_event`/`generate_synthetic` `space='flux'`: `F -> F*A`, i.e.
+  `s -> (s+1)*A - 1` with `sigma_s -> sigma_s*A`) is built and tested (6 tests;
+  the recovery yardstick round-trips a known event back through the detector).
+  **Still TODO:** cadence/event-population retune for LSST, and end-to-end
+  validation on the public DP0.2 (RSP access -- no local Rubin data on the dev
+  machine).
 - **Phase 3:** high-level `detect()` in-memory API; LSST example notebook; CI;
   docstrings/docs.
 

@@ -240,20 +240,42 @@ def synth_objid(objid, lensing_params):
                + f"_{lensing_params['crossing_time']:.2f}"
                + f"_{lensing_params['impact_parameter']:.5f}")
 
-def add_microlensing_event(df: pd.DataFrame, **lensing_params):
-    """
-    Return a copy of input dataframe with a synthesized microlensing event 
-    superimposed on the curve, with params given in 'lensing_params'
+def add_microlensing_event(df: pd.DataFrame, *, space='mag', **lensing_params):
+    """Return a copy of ``df`` with a synthetic PSPL event superimposed.
+
+    The magnification ``A(t) = microlensing_amplification(mjd, **lensing_params)``
+    multiplies the source flux. The two spaces are the same physical (multiplicative)
+    event written in the two detector frames:
+
+    - ``space='mag'`` (NSC default): an additive delta-magnitude ``-2.5 log10(A)``
+      on ``mag_auto``/``deltamag``; the magnitude error is left unchanged.
+    - ``space='flux'``: the multiplicative twin on the canonical fractional-flux
+      frame (``schema.normalize(space='flux')``). The stored signal
+      ``s = F/F_ref - 1`` becomes ``s' = (s + 1)*A - 1`` (i.e. observed flux
+      F -> F*A), and the fractional-flux error ``sigma_s = sigma_F/F_ref`` scales
+      to ``sigma_s * A`` -- which holds ``sigma_F/F`` invariant, exactly as the
+      magnitude path leaves ``sigma_mag`` unchanged.
+
+    Both spaces relabel the object id (``synth_objid``: ``..._ml_<t0>_<tE>_<u0>``)
+    and record the source id in ``originalid``. See PORTABILITY.md sec. 2.
     """
     lc = df.copy()
-    mag_diffs = amp_to_mag(microlensing_amplification(lc['mjd'].to_numpy(), **lensing_params))
-    lc['mag_auto'] = (lc['mag_auto'] + mag_diffs).astype(lc.dtypes['mag_auto'])
-    lc['deltamag'] = (lc['deltamag'] + mag_diffs).astype(lc.dtypes['deltamag'])
+    amp = microlensing_amplification(lc['mjd'].to_numpy(), **lensing_params)
+    if space == 'mag':
+        mag_diffs = amp_to_mag(amp)
+        lc['mag_auto'] = (lc['mag_auto'] + mag_diffs).astype(lc.dtypes['mag_auto'])
+        lc['deltamag'] = (lc['deltamag'] + mag_diffs).astype(lc.dtypes['deltamag'])
+    elif space == 'flux':
+        s = lc['deltamag'].to_numpy()
+        lc['deltamag'] = ((s + 1.0) * amp - 1.0).astype(lc.dtypes['deltamag'])
+        lc['magerr_auto'] = (lc['magerr_auto'].to_numpy() * amp).astype(lc.dtypes['magerr_auto'])
+    else:
+        raise ValueError(f"unknown space {space!r}; use 'mag' or 'flux'")
 
     newobjid = synth_objid(lc.iloc[0]['objectid'], lensing_params)
     lc['originalid'] = lc['objectid']
     lc['objectid'] = newobjid
-    
+
     return lc
 
 @njit
@@ -269,9 +291,11 @@ def ml_f_flux(*x):
     return microlensing_amplification(*x) - 1.0
 
 def generate_synthetic_microlensing_events_from_population(
-        lcfiles, events_file, ws_regions, outdir, outname, rng=None):
+        lcfiles, events_file, ws_regions, outdir, outname, rng=None, space='mag'):
     # rng: pass a seeded numpy Generator for reproducible event/region draws;
     # defaults to a fresh (entropy-seeded) Generator.
+    # space: 'mag' (NSC, additive delta-mag) or 'flux' (multiplicative on the
+    # canonical fractional-flux frame); forwarded to add_microlensing_event.
     if rng is None:
         rng = np.random.default_rng()
 
@@ -308,9 +332,9 @@ def generate_synthetic_microlensing_events_from_population(
             for region in regions:
                 times = lc.loc[region]['mjd'].to_numpy()
                 peak_time=np.mean([times[0],times[-1]])
-                new_lc = add_microlensing_event(lc, \
-                            impact_parameter=impact_parameter, crossing_time=crossing_time, \
-                            peak_time=peak_time) 
+                new_lc = add_microlensing_event(lc, space=space,
+                            impact_parameter=impact_parameter, crossing_time=crossing_time,
+                            peak_time=peak_time)
                 mldfs.append(new_lc)
                 object_event_list.append({'objectid': objid,
                                           'synthid' : str(new_lc.iloc[0]['objectid']),
@@ -323,11 +347,11 @@ def generate_synthetic_microlensing_events_from_population(
 
         outpath = os.path.join(outsubdir, synthfile)
         bigdf = pd.concat(mldfs)
-        bigdf['exposure'] = bigdf['exposure'].astype('category')
-        bigdf['filter'] = bigdf['filter'].astype('category')
-        bigdf['objectid'] = bigdf['objectid'].astype('category')
-        bigdf['originalid'] = bigdf['originalid'].astype('category')
-        bigdf['instrument'] = bigdf['instrument'].astype('category')
+        # Categoricals to shrink the parquet. NSC frames carry all of these;
+        # guard each so flux/LSST frames lacking exposure/instrument still write.
+        for col in ('exposure', 'filter', 'objectid', 'originalid', 'instrument'):
+            if col in bigdf.columns:
+                bigdf[col] = bigdf[col].astype('category')
         bigdf.to_parquet(outpath)
         del df, bigdf
         

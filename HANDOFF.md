@@ -35,14 +35,16 @@ this branch (an intentional RNG re-capture, `pipeline_small.json`).
 
 ## What's next (see PORTABILITY.md §5)
 
-1. **`from_lsst` adapter** (`nscml/surveys/lsst.py`): map ForcedSource /
-   DiaSource columns to a flux `LightcurveSchema`; **supply a positive template
-   `F_ref`** (a difference-flux median is not valid — `normalize` guards
-   `F_ref<=0`). Validate on the public, simulated **DP0.2** (DP1 is access-gated).
-2. Multiplicative synthetic injection in flux (`add_microlensing_event` /
-   `generate_synthetic` flux mode) for the recovery yardstick.
+1. ~~**`from_lsst` adapter** (`nscml/surveys/lsst.py`)~~ — **DONE** (on `main`):
+   ForcedSource/DiaSource -> flux `LightcurveSchema`, with `template_flux_col`
+   supplying a positive `F_ref` for difference flux; 5 synthetic tests. DP0.2
+   validation still pending (no local Rubin data / RSP access).
+2. ~~Multiplicative synthetic injection in flux~~ — **DONE** (`feat/flux-injection`):
+   `add_microlensing_event(space='flux')` and `generate_synthetic_..._from_population(space='flux')`
+   map `F -> F*A` (`s -> (s+1)*A - 1`, `sigma_s -> sigma_s*A`); 6 tests incl. the
+   recovery yardstick. mag goldens byte-identical (94 tests green).
 3. Cadence/event-population retune for LSST; a high-level in-memory
-   `detect(df, schema)` API; CI.
+   `detect(df, schema)` API; CI; DP0.2 end-to-end validation.
 
 ## Things to know (the non-obvious bits)
 

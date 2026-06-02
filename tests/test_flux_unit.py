@@ -143,3 +143,118 @@ def test_flux_and_flux_to_mag_recover_consistent_params(tmp_path):
     # crossing time within ~15%
     assert fr['peak_time'] == pytest.approx(mr['peak_time'], abs=2.0)
     assert fr['crossing_time'] == pytest.approx(mr['crossing_time'], rel=0.15)
+
+
+# --------------------------------------------------------------------------
+# synthetic injection (multiplicative, flux space) -- the recovery yardstick
+# --------------------------------------------------------------------------
+
+def _quiescent_flux_lc(fbase=5000.0, sigma=50.0, span=400.0, n=200, band='r', seed=1):
+    """A flat (event-free) flux light curve, F = fbase + Gaussian(sigma): the
+    real-data baseline an event is injected into."""
+    rng = np.random.default_rng(seed)
+    t = np.sort(rng.uniform(0, span, n))
+    return pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t,
+                         'flux': fbase + rng.normal(0, sigma, n),
+                         'fluxerr': np.full(n, sigma), 'filter': [band] * n})
+
+
+def test_add_microlensing_event_flux_is_multiplicative():
+    """flux mode multiplies the observed flux by A: the stored s = F/F_ref - 1
+    becomes (s+1)*A - 1, and sigma_s scales by A (holds sigma_F/F invariant)."""
+    n = 60
+    t = np.linspace(0.0, 400.0, n)
+    s0 = np.linspace(-0.05, 0.05, n)              # non-flat baseline: distinguishes (s+1)A-1 from A-1
+    sig0 = np.full(n, 0.02)
+    frame = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t,
+                          'deltamag': s0, 'magerr_auto': sig0, 'filter': ['r'] * n})
+    params = dict(impact_parameter=0.2, crossing_time=40.0, peak_time=200.0)
+    out = nscml.add_microlensing_event(frame, space='flux', **params)
+    A = nscml.microlensing_amplification(t, **params)
+    np.testing.assert_allclose(out['deltamag'].to_numpy(), (s0 + 1.0) * A - 1.0)
+    np.testing.assert_allclose(out['magerr_auto'].to_numpy(), sig0 * A)
+    assert (out['originalid'] == 'ev').all()
+    assert '_ml_' in str(out.iloc[0]['objectid'])     # relabeled synth id
+    np.testing.assert_array_equal(frame['deltamag'].to_numpy(), s0)   # input not mutated
+
+
+def test_add_microlensing_event_flux_is_a_positive_bump():
+    """A flux event is a POSITIVE excursion (s = A-1 >= 0), the sign-flip from the
+    magnitude dip, and it peaks at t0."""
+    n = 200
+    t = np.sort(np.random.default_rng(0).uniform(0, 400, n))
+    frame = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t, 'deltamag': np.zeros(n),
+                          'magerr_auto': np.full(n, 0.01), 'filter': ['r'] * n})
+    out = nscml.add_microlensing_event(frame, space='flux',
+                                       impact_parameter=0.1, crossing_time=30.0, peak_time=200.0)
+    s = out['deltamag'].to_numpy()
+    assert s.max() > 0.1
+    assert s.min() > -1e-9                              # A >= 1 everywhere => s >= 0
+    assert t[np.argmax(s)] == pytest.approx(200.0, abs=10.0)
+
+
+def test_add_microlensing_event_rejects_unknown_space():
+    frame = pd.DataFrame({'objectid': ['ev'], 'mjd': [1.0], 'deltamag': [0.0],
+                          'magerr_auto': [0.01], 'filter': ['r']})
+    with pytest.raises(ValueError, match='space'):
+        nscml.add_microlensing_event(frame, space='nonsense',
+                                     impact_parameter=0.2, crossing_time=40.0, peak_time=1.0)
+
+
+def test_add_microlensing_event_mag_and_flux_are_same_event():
+    """The same A injected in both spaces is one physical (multiplicative) event:
+    mag adds -2.5 log10(A); flux takes s+1 -> (s+1)*A. On a flat baseline
+    10**(-dmag/2.5) == s+1 == A."""
+    n = 50
+    t = np.linspace(0.0, 400.0, n)
+    params = dict(impact_parameter=0.2, crossing_time=40.0, peak_time=200.0)
+    mag_frame = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t,
+                              'mag_auto': np.full(n, 20.0), 'deltamag': np.zeros(n)})
+    flux_frame = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t, 'deltamag': np.zeros(n),
+                               'magerr_auto': np.full(n, 0.01), 'filter': ['r'] * n})
+    dmag = nscml.add_microlensing_event(mag_frame, space='mag', **params)['deltamag'].to_numpy()
+    s = nscml.add_microlensing_event(flux_frame, space='flux', **params)['deltamag'].to_numpy()
+    A = nscml.microlensing_amplification(t, **params)
+    np.testing.assert_allclose(10.0 ** (-dmag / 2.5), s + 1.0, rtol=1e-9)
+    np.testing.assert_allclose(s + 1.0, A, rtol=1e-12)
+
+
+def test_flux_injection_recovered_by_detector(tmp_path):
+    """End-to-end yardstick: inject a known event into a quiescent flux LC with
+    add_microlensing_event(space='flux'), then detect + fit and recover it."""
+    frame = nscml.normalize(_quiescent_flux_lc(), FLUX_SCHEMA)     # canonical flux frame, s ~ 0
+    inj = nscml.add_microlensing_event(frame, space='flux',
+                                       impact_parameter=0.2, crossing_time=40.0, peak_time=200.0)
+    excs, fitdf = _run('flux', inj, tmp_path, 'inj')
+    sid = inj.iloc[0]['objectid']
+    assert len(excs[sid]) >= 1                          # injected bump detected
+    assert len(fitdf) >= 1
+    row = fitdf.iloc[0]
+    assert row['crossing_time'] == pytest.approx(40.0, rel=0.25)
+    assert row['peak_time'] == pytest.approx(200.0, abs=5.0)
+
+
+def test_generate_synthetic_flux_mode_runs_and_injects(tmp_path):
+    """generate_synthetic...(space='flux') injects multiplicative events into a
+    canonical flux frame and writes the synth parquet without the NSC-only
+    columns (exposure/instrument)."""
+    rng = np.random.default_rng(3)
+    t = np.sort(np.concatenate([np.arange(0.0, 250.0, 2.0), [300.0, 350.0]]))  # dense => one WS region
+    n = len(t)
+    frame = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t,
+                          'deltamag': rng.normal(0, 0.01, n), 'magerr_auto': np.full(n, 0.01),
+                          'filter': ['r'] * n}).reset_index(drop=True)
+    lcpath = os.path.join(str(tmp_path), 'lc.parquet')
+    frame.to_parquet(lcpath)
+    regions = nscml.well_sampled_region(frame, interval=50, maxrevisit=10, seqlen=5)
+    assert regions, 'need a well-sampled region to inject into'
+    ws_regions = {'ev': regions}
+    events = pd.DataFrame({'crossing_time': [40.0 * 24], 'umin': [0.2]})    # tE in HOURS (gen divides by 24)
+    nscml.generate_synthetic_microlensing_events_from_population(
+        [lcpath], events, ws_regions, str(tmp_path), 'fxsynth',
+        rng=np.random.default_rng(0), space='flux')
+    base = os.path.join(str(tmp_path), 'synth-fxsynth')
+    assert os.path.exists(os.path.join(base, 'synth-fxsynth-info.pickle'))
+    synth = pd.read_parquet(os.path.join(base, 'lc-synth-fxsynth.parquet'))
+    assert synth['deltamag'].max() > 0.1                # positive flux bump injected
+    assert (synth['originalid'].astype(str) == 'ev').all()
