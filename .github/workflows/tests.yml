@@ -1,0 +1,37 @@
+name: tests
+
+on:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # The parity goldens are captured on Apple Silicon (arm64/Darwin) and the
+    # numba kernels + seeded paths are asserted bit-exact (only the BLAS-backed
+    # fit pipeline gets a cross-platform tolerance -- see tests/conftest.py), so
+    # CI runs on the matching arch. The pinned requirements install the same
+    # wheels as the validated dev env (conda "nsc", CPython 3.11.9).
+    runs-on: macos-latest          # macos-14+ runners are arm64
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies (pinned to the validated env)
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements-dev.txt
+
+      - name: Install nscml (editable; compat mode for the nested nscml/nscml package)
+        run: pip install -e nscml --config-settings editable_mode=compat
+
+      - name: Run tests
+        run: python -m pytest
