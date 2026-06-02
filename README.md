@@ -105,7 +105,9 @@ Call those directly for finer control. `nscml.flux_to_mag(flux_df, schema)` is t
 alternative (lossy) flux->mag ingest, kept as a comparison baseline.
 
 See **[examples/lsst_quickstart.py](examples/lsst_quickstart.py)** for a runnable
-end-to-end demo (synthetic LSST data, no data access needed) and
+end-to-end demo (synthetic LSST data, no data access needed),
+[RUNNING_ON_RSP.md](RUNNING_ON_RSP.md) for dropping the detector onto the Rubin
+Science Platform (Butler/TAP access to the data releases), and
 [PORTABILITY.md](PORTABILITY.md) for the design and the achromaticity argument.
 
 ## Tests

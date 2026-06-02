@@ -154,6 +154,11 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
 
 ## 3. Running on Rubin LSST -- concrete recipe
 
+> A step-by-step deployment recipe (install on the RSP, Butler/TAP access to the
+> data-release photometry, schema mapping) now lives in
+> [RUNNING_ON_RSP.md](RUNNING_ON_RSP.md). This section is the design rationale
+> behind it.
+
 - **Data access:** DP1 (released June 2025) is access-gated to US/Chilean
   institutions and named affiliates; the public, simulated **DP0.2** is the
   easiest place to prototype an adapter without credentials. (See brain memory
@@ -230,8 +235,13 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   `examples/lsst_quickstart.py` (synthetic LSST -> `from_lsst`/`detect`,
   smoke-tested); GitHub Actions on macos-latest/arm64 (the goldens' capture arch,
   required for the bit-exact kernel tests). Full suite 100 green, mag goldens
-  byte-identical. Remaining: LSST cadence/event-population retune, and DP0.2
-  end-to-end validation (needs RSP access / Rubin data).
+  byte-identical. Remaining: (1) the LSST cadence/event-population retune is
+  **deferred by decision** -- the NSC defaults were chosen with Rubin in mind and
+  are kept as-is; quantifying how well they suit the LSST WFD cadence is future
+  research; (2) DP0.2/DP1 end-to-end validation on the RSP (needs an RSP account
+  / Rubin data) -- deployment recipe in [RUNNING_ON_RSP.md](RUNNING_ON_RSP.md)
+  (stack is Python 3.12, so nscml installs; the numpy 1.x->2.x jump is the open
+  risk to validate).
 
 ---
 

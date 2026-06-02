@@ -50,8 +50,12 @@ this branch (an intentional RNG re-capture, `pipeline_small.json`).
    smoke-tested). GitHub Actions on **macos-latest/arm64** — the goldens' capture
    arch; the bit-exact numba-kernel tests need the matching platform, so don't
    move CI to ubuntu/x86 without tolerance-comparing those. Full suite 100 green,
-   mag goldens byte-identical. Remaining: LSST cadence/event-population retune,
-   and DP0.2 end-to-end validation (needs RSP access / Rubin data).
+   mag goldens byte-identical. Remaining: (1) cadence/event-population retune —
+   **deferred by decision** (keep the NSC defaults; they were chosen Rubin-aware,
+   justification is future research); (2) DP0.2/DP1 end-to-end validation on the
+   RSP — recipe in **RUNNING_ON_RSP.md** (Butler/TAP access; stack is Python 3.12
+   so nscml installs via `pip install --user`; the numpy 1.x→2.x jump is the open
+   risk -- run the suite on the RSP first).
 
 ## Things to know (the non-obvious bits)
 
