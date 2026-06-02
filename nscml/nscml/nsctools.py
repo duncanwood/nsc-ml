@@ -19,6 +19,38 @@ from numba import njit
 
 import tqdm
 
+# Explicit public API so `from .nsctools import *` (in __init__) does not leak
+# the imported np/pd/os/re/etc. into the package namespace.
+__all__ = [
+    'color_filter', 'marker_map', 'magstr', 'WS_INTERVAL_DAYS',
+    'WS_MAX_REVISIT_DAYS', 'WS_SEQ_LEN', 'OUTLIERS_CUTOFF',
+    'OUTLIERS_CUTOFF_DATA', 'Z_THRESHOLD', 'DETECTION_TIMESCALE_DAYS',
+    'N_MEASURED', 'DURATION_DAYS', 'N_MIN_OUTSIDE_FIT', 'N_KS_GAUSSIAN',
+    'CONTEXT_SIZE_DAYS', 'CROSSING_TIME_GUESS_DAYS', 'TEMPER_ERRORS_FIT',
+    'FIT_TIME_PAD_DAYS', 'COND_LIM', 'make_delta_mags_mono', 'make_delta_mags',
+    'make_instrument', 'get_default_args', 'convert_to_range_index',
+    'well_sampled_region', 'get_well_sampled_objects',
+    'get_just_well_sampled_objects', 'microlensing_amplification', 'ml_jac',
+    'amp_to_mag', 'synth_objid', 'add_microlensing_event', 'ml_f',
+    'generate_synthetic_microlensing_events_from_population', 'ks_weighted',
+    'reject_low_error_outliers_args', 'reject_outliers_args', 'reject_outliers',
+    'sparse_gaussian_wma', 'sparse_gaussian_wms', 'sparse_gaussian_window_iter',
+    'sparse_gaussian_window', 'dense_sparse_gaussian_window', 'gaussian_window',
+    'clipped_gaussian_window', 'weighted_avg_and_std',
+    'weighted_moving_average', 'compute_weighted_moving_average',
+    'weighted_moving_average_gaussian',
+    'weighted_moving_average_sparse_gaussian', 'weighted_moving_average_err',
+    'weighted_moving_average_scatter', 'weighted_moving_average_df',
+    'float_cols_to_double', 'strip_objid', 'find_persistent_excursions',
+    'search_files_for_excursions', 'consolidate_search_files_for_excursions',
+    'reduce_excursions', 'get_nondetections', 'compute_file_map', 'extend_lc',
+    'fit_excursions', 'make_fit_excursions_df', 'search_for_params',
+    'common_params', 'default_args_of_functions',
+    'search_files_for_microlensing_events', 'cut_by_npoints', 'cut_by_pval',
+    'cut_high_points_low_p', 'cut_high_points_inout_low_p', 'cut_pcov',
+    'cut_crossing_time', 'split_real_synth_df',
+]
+
 # --- Science-bearing default parameters -------------------------------------
 # The magic numbers from the function signatures below, gathered in one place.
 # The numba kernels keep their own primitive defaults (timescale=2, nclip=10);
@@ -440,9 +472,7 @@ def sparse_gaussian_window(t, timescale=2, nclip=10):
                                      shape=(t.shape[0], t.shape[0]))
     return sparse_matrix
 def dense_sparse_gaussian_window(t, timescale=2, nclip=10):
-    sparse_matrix = sparse.csr_array(sparse_gaussian_window_iter(t, timescale, nclip), 
-                                     shape=(t.shape[0], t.shape[0]))
-    return sparse_matrix.todense()
+    return sparse_gaussian_window(t, timescale, nclip).todense()
 @njit
 def gaussian_window(dt, timescale=2):
     return np.exp(-((dt/timescale)**2)/2)
@@ -489,13 +519,8 @@ def compute_weighted_moving_average(y, t, errors, window_fn=gaussian_window, tim
 
 @njit
 def weighted_moving_average_gaussian(y, t, errors, timescale=2):
-    windows = gaussian_window(t.reshape(-1,1)-t.reshape(1,-1), timescale)
-    weights = 1/errors**2
-    windowsXweights = (windows @ weights)
-    wma = (windows @ (weights*y))/windowsXweights
-    return (wma, 
-            weighted_moving_average_err(weights, windows, windowsXweights),
-            weighted_moving_average_scatter(y, wma, weights, windows, windowsXweights))
+    # thin alias: the default window of compute_weighted_moving_average is the gaussian
+    return compute_weighted_moving_average(y, t, errors, gaussian_window, timescale)
 
 # not njit: builds a scipy.sparse matrix, which numba does not support
 def weighted_moving_average_sparse_gaussian(y, t, errors, timescale=2):
