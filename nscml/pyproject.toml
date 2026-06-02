@@ -27,4 +27,4 @@ dependencies = [
 test = ["pytest>=9.0"]
 
 [tool.setuptools]
-packages = ["nscml"]
+packages = ["nscml", "nscml.surveys"]
