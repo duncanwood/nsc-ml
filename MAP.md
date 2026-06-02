@@ -16,7 +16,7 @@ average / scatter kernels; the rest is a parquet-backed batch pipeline.
 
 ```
 nscml/
-  setup.py                 build (see AUDIT: minimal/legacy)
+  pyproject.toml           build config (setuptools; requires-python >=3.11)
   nscml/
     __init__.py            from .nsctools import *; from .plot import *
     nsctools.py            detection core + file pipeline (this map)
@@ -25,10 +25,11 @@ requirements.txt           pinned runtime deps (Python 3.11)
 tests/                     unit + parity + integration + golden fixtures
 ```
 
-`__init__.py` re-exports everything from `nsctools` and `plot` via `import *`
-(see AUDIT, "star imports"). `__deprecated.py` (parked KDE segmentation,
-achromaticity test, weighted skewness) was import-dead and has been removed;
-it survives in git history.
+`__init__.py` re-exports `nsctools` and `plot` via `import *`, bounded by each
+module's `__all__` (so the imported numpy/pandas/etc. do not leak into the
+package namespace). `__deprecated.py` (parked KDE segmentation, achromaticity
+test, weighted skewness) was import-dead and has been removed; it survives in
+git history.
 
 ## Data model
 
@@ -61,7 +62,7 @@ ascending.
 | `sparse_gaussian_wms(y, t, w, wma, ...)` | scatter | **windowed weighted moving scatter** (called by the above) |
 | `sparse_gaussian_window_iter(t, ...)` | COO ingredients | builds the sparse window matrix (consumed by the non-njit `sparse_gaussian_window`) |
 | `compute_weighted_moving_average(y, t, e, window_fn, timescale)` | (wma, err, scatter) | dense O(n^2) reference; `window_fn` must itself be njit |
-| `weighted_moving_average_gaussian(y, t, e, timescale)` | (wma, err, scatter) | dense gaussian (duplicate of the above with the window hardcoded) |
+| `weighted_moving_average_gaussian(y, t, e, timescale)` | (wma, err, scatter) | thin alias of `compute_weighted_moving_average` with the gaussian window |
 | `weighted_moving_average_err / _scatter` | array | the error / scatter pieces of the dense form |
 | `gaussian_window(dt, timescale)` / `clipped_gaussian_window(dt, ts, nclip)` | weight | the window itself (clipped truncates beyond `nclip*timescale`) |
 | `weighted_avg_and_std(values, weights)` | (avg, std) | weight-normalised |
@@ -98,7 +99,8 @@ Data flow, single object -> batch of files:
    `context_size` days of padding), then scores the fit residuals with
    `ks_weighted` -- a two-sample test against the out-of-event photometry, or
    (too few outside points) against a synthetic Gaussian of the same weighted
-   scatter. Returns `(fitresults, fitfails, fitdups)`.
+   scatter, drawn from the injected `rng` (default: a fresh Generator; pass a
+   seeded one for reproducibility). Returns `(fitresults, fitfails, fitdups)`.
 5. `make_fit_excursions_df(fitresults)` -> tidy DataFrame: `objectid, excnum,
    pval, n_fit, n_out, cond_num, impact_parameter, crossing_time, peak_time,
    two_sample`.
@@ -110,9 +112,10 @@ functions' defaults.
 
 Synthetic-event generation (the recovery yardstick):
 `generate_synthetic_microlensing_events_from_population(lcfiles, events_file,
-ws_regions, outdir, outname)` injects events drawn from a population table
-(`crossing_time` in hours, `umin`) into copies of real objects via
-`add_microlensing_event` and writes synthetic parquet files.
+ws_regions, outdir, outname, rng=None)` injects events drawn from a population
+table (`crossing_time` in hours, `umin`) into copies of real objects via
+`add_microlensing_event` and writes synthetic parquet files. `rng` controls the
+event/region draws (pass a seeded Generator for reproducibility).
 
 ## Selection cuts
 
@@ -149,5 +152,7 @@ Matplotlib diagnostics: `plot_lc`, `plot_deltamags`,
 ## Running it
 
 Python 3.11 with the pinned `requirements.txt` (validated against conda env
-`nsc`, CPython 3.11.9). Install editable: `pip install -e nscml`. Tests:
+`nsc`, CPython 3.11.9). Build config is `nscml/pyproject.toml`; install editable
+with `pip install -e nscml --config-settings editable_mode=compat` (the nested
+`nscml/nscml` layout needs develop-style path resolution). Tests:
 `pip install -r requirements-dev.txt && python -m pytest`.

@@ -14,8 +14,41 @@ exactly. Output is bit-for-bit reproducible across runs.
 What is here is typical, healthy research code. The findings below are
 almost all "would make this a cleaner reusable library," not "this is wrong."
 The one genuine defect is a small cluster of unfinished `fit_stats*` stubs
-that are not on any live path. Nothing was changed for any item in this file;
-every item is a proposal.
+that are not on any live path.
+
+## Resolution (implemented 2026-06-02, branch refactor/nscml-proposals)
+
+The proposals were approved and implemented on top of the audit branch. The
+parity suite stayed green throughout, except one deliberate, isolated
+re-capture (the small-sample KS reference, finding 1). Status per finding:
+
+| # | finding | status |
+|---|---|---|
+| 1 | inject a numpy Generator (RNG) | done -- `fit_excursions`/`generate_synthetic` take `rng=`; `import random` dropped; only `pipeline_small.json` (pval) re-captured |
+| 2 | star imports | done -- explicit `__all__` in nsctools.py and plot.py (0 import names leak) |
+| 3 | name magic numbers | done -- constants block; `get_default_args` values unchanged |
+| 4 | path construction | done -- `os.path.join`/`dirname`/`basename` throughout |
+| 5 | unfinished `fit_stats*` stubs | done -- removed (unused) |
+| 6a | empty-lightcurve guard | done -- returns `[]` |
+| 6b | `'ml'` -> `'_ml_'` in `split_real_synth_df` | done |
+| 6c | `consolidate` raise on mismatch | done -- raises `ValueError` |
+| 6d | curve_fit `u0` lower bound = 0 | **kept as-is** (see note) |
+| 7 | near-duplicate functions | partial -- `weighted_moving_average_gaussian` and `dense_sparse_gaussian_window` now delegate; the `get_*well_sampled_objects` pair kept (differ by `observed=`/empty-filter, used by notebooks) |
+| 8 | `pyproject.toml` | done -- replaces `setup.py`; egg-info untracked |
+
+Why 6d was kept: the current design lets a degenerate fit rail to `u0 ~ 0`,
+which yields an enormous covariance condition number that `cut_pcov` reliably
+removes. A small positive lower bound would instead rail degenerate fits to
+that floor, where the condition number can fall *below* `cond_lim` and slip
+through the cut -- turning a clean reject into a possible false positive. The
+rail-to-zero + condition-number cut is the intended degeneracy filter, so it
+was left unchanged. (Happy to revisit empirically if wanted.)
+
+New issue spotted while implementing (flagged, not fixed): `fit_excursions`
+takes a `context_size` parameter but calls `extend_lc(df, region)` without
+passing it, so the fit window is always the `extend_lc` default and the
+`fit_excursions` `context_size` argument is dead. Wiring it through would
+change results for any caller that sets it, so it is left pending a decision.
 
 ## What was changed in this branch
 
