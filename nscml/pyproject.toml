@@ -1,0 +1,30 @@
+# Editable installs: because the distribution root and the package share the
+# name "nscml" (nscml/nscml/), a PEP 660 editable install can be shadowed by a
+# namespace dir when running from the repo root. Install with develop-style
+# resolution:  pip install -e nscml --config-settings editable_mode=compat
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nscml"
+version = "0.1.0"
+description = "Multi-band time-series outlier detection for gravitational microlensing in survey photometry"
+requires-python = ">=3.11"   # uses warnings.catch_warnings(action=...) (added in 3.11)
+dependencies = [
+    # lower bounds match the validated environment (conda env "nsc", CPython
+    # 3.11.9); requirements.txt pins the exact versions for reproducibility.
+    "numpy>=1.23.5",
+    "pandas>=2.2.2",
+    "scipy>=1.11.4",
+    "numba>=0.59.1",
+    "pyarrow>=16.1.0",
+    "tqdm>=4.66.2",
+    "matplotlib>=3.8.4",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=9.0"]
+
+[tool.setuptools]
+packages = ["nscml"]
