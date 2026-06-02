@@ -14,10 +14,7 @@ import nscml
 
 
 def _meta(outdir):
-    # outdir must end in '/': consolidate_search_files_for_excursions builds its
-    # path as outdir+outfile with no separator (see AUDIT, path construction).
-    return {'outdir': str(outdir).rstrip('/') + '/',
-            'outfile': 'search.pickle', 'fitoutfile': 'fits.pickle'}
+    return {'outdir': str(outdir), 'outfile': 'search.pickle', 'fitoutfile': 'fits.pickle'}
 
 
 @pytest.fixture
