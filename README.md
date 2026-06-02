@@ -84,20 +84,28 @@ the cuts, and the file-pipeline functions.
 
 The detector defaults to magnitudes (NSC). For flux data (LSST forced
 photometry is nanojansky and can be negative) use the fractional-flux mode,
-which keeps the achromatic cross-band pooling that makes the method work:
+which keeps the achromatic cross-band pooling that makes the method work. The
+high-level `detect()` runs the whole pipeline in memory straight from a flux
+schema:
 
 ```python
-schema = nscml.LightcurveSchema(id='objectId', time='mjd', band='band',
-                                measurement='psfFlux', error='psfFluxErr',
-                                value=None, space='flux')
-frame = nscml.normalize(flux_df, schema)                       # s = F/F_ref - 1
-regions = nscml.find_persistent_excursions(frame, space='flux')   # positive bump
-# fits use space='flux' too: nscml.fit_excursions(..., space='flux')
+from nscml.surveys.lsst import from_lsst, LSST_FORCEDSOURCE_SCHEMA, LSST_DIASOURCE_SCHEMA
+
+# ForcedSource (direct flux): one call -- the schema carries space='flux'
+events = nscml.detect(forcedsource_df, schema=LSST_FORCEDSOURCE_SCHEMA)
+
+# DiaSource (difference flux): fold in a positive template F_ref first, then detect
+canonical = from_lsst(diasource_df, LSST_DIASOURCE_SCHEMA, template_flux_col='template')
 ```
 
-`nscml.flux_to_mag(flux_df, schema)` is the alternative (lossy) flux->mag
-ingest, kept as a comparison baseline. See [PORTABILITY.md](PORTABILITY.md) for
-the design, the achromaticity argument, and the remaining LSST adapter work.
+Under the hood that is `normalize` (`s = F/F_ref - 1`, an achromatic *positive*
+bump) -> `find_persistent_excursions(space='flux')` -> `fit_excursions(space='flux')`;
+call those directly for finer control. `nscml.flux_to_mag(flux_df, schema)` is the
+alternative (lossy) flux->mag ingest, kept as a comparison baseline.
+
+See **[examples/lsst_quickstart.py](examples/lsst_quickstart.py)** for a runnable
+end-to-end demo (synthetic LSST data, no data access needed) and
+[PORTABILITY.md](PORTABILITY.md) for the design and the achromaticity argument.
 
 ## Tests
 

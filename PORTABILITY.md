@@ -225,10 +225,13 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   **Still TODO:** cadence/event-population retune for LSST, and end-to-end
   validation on the public DP0.2 (RSP access -- no local Rubin data on the dev
   machine).
-- **Phase 3 (in progress):** high-level `detect(df, schema)` in-memory API --
-  DONE (`nsctools.detect`; 5 tests; full suite 99 green, mag goldens
-  byte-identical). Remaining: LSST cadence/event-population retune, an LSST
-  example (notebook or script), and CI.
+- **Phase 3 (mostly done):** the high-level `detect(df, schema)` in-memory API,
+  a runnable LSST example, and CI are all DONE -- `nsctools.detect` (5 tests);
+  `examples/lsst_quickstart.py` (synthetic LSST -> `from_lsst`/`detect`,
+  smoke-tested); GitHub Actions on macos-latest/arm64 (the goldens' capture arch,
+  required for the bit-exact kernel tests). Full suite 100 green, mag goldens
+  byte-identical. Remaining: LSST cadence/event-population retune, and DP0.2
+  end-to-end validation (needs RSP access / Rubin data).
 
 ---
 

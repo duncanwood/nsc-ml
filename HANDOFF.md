@@ -43,11 +43,15 @@ this branch (an intentional RNG re-capture, `pipeline_small.json`).
    `add_microlensing_event(space='flux')` and `generate_synthetic_..._from_population(space='flux')`
    map `F -> F*A` (`s -> (s+1)*A - 1`, `sigma_s -> sigma_s*A`); 6 tests incl. the
    recovery yardstick. mag goldens byte-identical (94 tests green).
-3. Partly done. **`detect(df, schema)` in-memory API — DONE** (`nscml.detect`:
-   normalize → find → fit → df, no temp files; `restrict_well_sampled=True`
-   mirrors the NSC search; 5 tests; full suite 99 green, mag goldens
-   byte-identical). Remaining: LSST cadence/event-population retune, an LSST
-   example (notebook/script), CI, and DP0.2 end-to-end validation.
+3. Mostly done. **`detect(df, schema)` API, a runnable LSST example, and CI —
+   DONE.** `nscml.detect` (normalize → find → fit → df, no temp files;
+   `restrict_well_sampled=True` mirrors the NSC search; 5 tests).
+   `examples/lsst_quickstart.py` (synthetic LSST → `from_lsst`/`detect`,
+   smoke-tested). GitHub Actions on **macos-latest/arm64** — the goldens' capture
+   arch; the bit-exact numba-kernel tests need the matching platform, so don't
+   move CI to ubuntu/x86 without tolerance-comparing those. Full suite 100 green,
+   mag goldens byte-identical. Remaining: LSST cadence/event-population retune,
+   and DP0.2 end-to-end validation (needs RSP access / Rubin data).
 
 ## Things to know (the non-obvious bits)
 
