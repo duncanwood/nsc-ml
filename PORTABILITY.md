@@ -78,37 +78,63 @@ Two implementation paths, smallest-diff first:
 Recommendation: do the minimal shim + extract NSC-isms first (Phase 1 below);
 it is low-risk and immediately lets someone point the tool at their own columns.
 
-## 2. Magnitude vs flux -- the Rubin blocker
+## 2. Magnitude vs flux -- the Rubin blocker (decision pending)
 
-nscml is a magnitude-space method: the signal is a **negative** delta-magnitude
-excursion, `amp_to_mag = -2.5 log10(A)`, and the PSPL model is fit in mags.
+nscml is a magnitude-space method: the detection signal is a **negative**
+delta-magnitude excursion, `amp_to_mag = -2.5 log10(A)`, and the PSPL model is
+fit in mags. LSST reports **flux in nanojansky (nJy)**, and forced/difference
+fluxes **can be negative** at faint flux; Rubin plots light curves in flux, not
+mag, precisely because the mag conversion drops negative-flux epochs. [1][2]
 
-LSST is different in a way that matters:
+### Why this is subtle: the cross-band coherence is a magnitude-space property
 
-- Photometry is reported as **flux in nanojansky (nJy)**, and forced fluxes
-  **can be negative** (faint or difference-image sources). Rubin deliberately
-  plots light curves in flux, not magnitude, because the mag conversion drops
-  negative-flux epochs. [1][2]
+The detector's power comes from pooling all bands into one delta series: PSPL
+magnification `A(u(t))` is wavelength-independent, so in MAGNITUDES every band
+shows the *same* dip and they reinforce. Concretely, unblended:
 
-So a naive "convert LSST flux to mag" adapter throws away exactly the faint
-epochs that matter and is ill-defined near zero flux. Two options:
+    mag:             dm        = -2.5 log10(A)     # same for every band  (achromatic)
+    raw flux:        dF        = (A - 1) * F_base  # scales with per-band baseline (CHROMATIC)
+    fractional flux: dF/F_base = A - 1             # same for every band  (achromatic again)
 
-- **(a) Flux->mag adapter (lossy, quick):** keep only `flux > 0`, convert to AB
-  mag, build `deltamag` against a per-band reference. Fine for bright,
-  well-measured stars; wrong for anything near the noise floor. A stopgap.
-- **(b) Flux-space detector (correct, scoped change):** microlensing multiplies
-  the baseline flux, `F_obs = A(u) * F_base`, so the natural detection signal is
-  a **positive** fractional flux excursion `delta_flux = F_obs - F_base`. The
-  WMA/scatter kernels are signal-agnostic -- they already work on any
-  (value, error, time) series. The only mag-specific pieces are: the sign of the
-  excursion threshold, `amp_to_mag`, and the fit model `ml_f`. A flux model is
-  just `F_base * microlensing_amplification(...)` -- and
-  `microlensing_amplification` already returns the flux amplification `A`;
-  `amp_to_mag` is the only conversion. So a `space="flux"` mode is a contained
-  change: swap the model function and the excursion sign, reuse everything else.
+So pooling *raw* flux across bands is wrong (a bright band dominates) -- the
+concern is real. But **fractional flux** (equivalently the flux ratio
+`F_obs/F_base = A`) is achromatic again, and is the faithful flux-space twin of
+delta-mag. Under blending, both `dm` and fractional flux pick up the *same* weak
+chromaticity through the per-band blend fraction `b = F_source/F_base`
+(`dm = -2.5 log10(A*b + 1 - b)`, `dF/F_base = (A-1)*b`), so the band pooling is
+already an achromatic approximation in either space.
 
-Recommendation: add a `space` toggle (`"mag"` default for NSC, `"flux"` for
-LSST), golden-tested. This is the single most important change for Rubin.
+### The two real options
+
+- **(A) Flux -> mag at the top (quick, lossy).** Convert `F -> AB mag` where
+  `F > 0`, build delta-mag, and run the existing, fully-tested mag pipeline
+  unchanged. Pros: zero core/kernel changes; reuses the validated pipeline and
+  goldens; cross-band pooling intact. Cons: mag is undefined for `F <= 0`, so the
+  faint and difference-image epochs (common in LSST) must be dropped or clipped
+  -- losing exactly the low-SNR points and biasing the baseline; and flux->mag
+  error is asymmetric and diverges as `F -> 0`, breaking the Gaussian-error
+  assumption the WMA and KS rely on. Good for bright, high-SNR events; a fast
+  first look.
+
+- **(B) Fractional-flux throughout (correct, scoped change).** Detect on
+  `s = F_obs/F_ref - 1` (per-band reference flux `F_ref`, e.g. the median): a
+  *positive* excursion; model `s = A(u) - 1` (`microlensing_amplification`
+  already returns `A`); errors `sigma_s = sigma_F / F_ref`, symmetric and finite
+  even at `F = 0`. The numba WMA/scatter kernels are signal-agnostic and stay
+  unchanged; the only mag-specific pieces are the excursion sign, `amp_to_mag`,
+  and the model `ml_f`. Pros: correct for all flux incl. negatives; preserves the
+  achromatic pooling; proper errors; the natural LSST space. Cons: real changes
+  (a `space` toggle, a flux baseline, a flux model, the flipped sign) plus new
+  goldens for the flux path, while keeping the mag/NSC path bit-identical. Good
+  for the actual Rubin (faint/low-SNR) regime.
+
+**Leaning:** (B) is the technically correct answer to the achromaticity point --
+it is the flux formulation that *keeps* the cross-band coherence, which (A) also
+keeps but only by discarding faint epochs, and which raw delta-flux loses
+entirely. Suggested path: build (B) as the real Rubin capability and expose (A)
+as a one-line `flux_to_mag` adapter for quick bright-source looks. (A) ships
+faster if a quick prototype is the only goal. **Decision pending** before any
+flux code is written.
 
 ## 3. Running on Rubin LSST -- concrete recipe
 
@@ -164,11 +190,15 @@ LSST), golden-tested. This is the single most important change for Rubin.
 
 ## 5. Suggested phased plan
 
-- **Phase 1 (low-risk, high-value):** README + data-contract; extract NSC-isms
-  into `surveys/nsc.py`; add `LightcurveSchema` + `normalize(df, schema)` at the
-  pipeline entries. No kernel changes; goldens unaffected.
-- **Phase 2 (Rubin):** `space="flux"` mode (flux PSPL model + excursion sign);
-  `from_lsst` adapter; retune cadence/population params; validate on DP0.2.
+- **Phase 1 (low-risk, high-value) -- DONE.** README + data contract;
+  `LightcurveSchema` + `normalize(df, schema)` (`nscml/schema.py`); NSC adapter
+  namespace (`nscml/surveys/nsc.py`) re-exporting the NSC-specific helpers. No
+  kernel changes; goldens unaffected; 8 new tests. (Physical relocation of the
+  NSC helpers out of `nsctools` is deferred -- notebooks still import them
+  there.)
+- **Phase 2 (Rubin) -- decision pending (see section 2).** Choose (A) flux->mag
+  adapter vs (B) fractional-flux `space="flux"` mode; then add the `from_lsst`
+  adapter, retune cadence/population params, validate on DP0.2.
 - **Phase 3:** high-level `detect()` in-memory API; LSST example notebook; CI;
   docstrings/docs.
 
