@@ -1,0 +1,21 @@
+{
+  "n_excursions_found": 1,
+  "fit_df": [
+    {
+      "objectid": "small_0",
+      "excnum": 0,
+      "pval": 0.6215230352801608,
+      "n_fit": 24,
+      "n_out": 0,
+      "cond_num": 139.7680598318959,
+      "impact_parameter": 0.06822630819752083,
+      "crossing_time": 7.937407785165984,
+      "peak_time": 60.02986988899137,
+      "two_sample": false
+    }
+  ],
+  "fit_meta": {
+    "n_fail": 0,
+    "n_dup": 0
+  }
+}
