@@ -545,6 +545,8 @@ def find_persistent_excursions(df, outliers_cutoff=OUTLIERS_CUTOFF, cut_outliers
         duration=DURATION_DAYS, restrict_to_indices=None, usescatter=True,
         temper_errors=None):
     df = df.sort_values('mjd')
+    if df.shape[0] == 0:
+        return []
 
     no_outliers = df.iloc[reject_outliers_args(df['deltamag'].to_numpy(), outliers_cutoff)]
     if cut_outliers:
@@ -640,13 +642,9 @@ def consolidate_search_files_for_excursions(partialfiles):
         with open(file, 'rb') as f:
             file_metadata, file_search_params, file_excursions = pickle.load(f)
         if metadata != file_metadata:
-            print(f"Metadata doesn't match for {file}. Aborting...")
-            print(set(metadata.items())^set(file_metadata.items()))
-            return
+            raise ValueError(f"Metadata doesn't match for {file}; aborting consolidation.")
         if search_params != file_search_params:
-            print(f"Search parameters don't match for {file}. Aborting...")
-            print(set(search_params.items())^set(file_search_params.items()))
-            return
+            raise ValueError(f"Search parameters don't match for {file}; aborting consolidation.")
         excursions.update(file_excursions)
     with open(os.path.join(metadata['outdir'], metadata['outfile']), 'wb') as f:
         pickle_data = (metadata, search_params, excursions)
@@ -855,28 +853,8 @@ def cut_crossing_time(df, timemin=1, timemax=None):
     return df[df['crossing_time']>timemin]
 
 def split_real_synth_df(fitdf):
-    sfitdf = fitdf[['ml' in id for id in fitdf['objectid']]]
+    # Synthetic objects carry the "_ml_" token in their id (see synth_objid);
+    # a bare "ml" substring would also match unrelated ids.
+    sfitdf = fitdf[['_ml_' in id for id in fitdf['objectid']]]
     rfitdf = fitdf.loc[fitdf.index.difference(sfitdf.index)]
     return rfitdf, sfitdf
-
-def fit_stats_split(rfitdf, sfitdf):
-    info = {}
-    info.update({})
-    return info
-
-def fit_stats_df(df):
-    info = {}
-    info.update({'n_excursions': df.shape[0]})
-    info.update({'n_excursions': df.shape[0]})
-    return info
-
-def fit_stats(full_fit_results):
-    info = {}
-    fitresults, fitfails, fitdups = full_fit_results
-    fitdf = make_fit_excursions_df(fitresults)
-    rfitdf, sfitdf = split_real_synth_df(fitdf)
-
-    if rfitdf.shape[0] > 0 and sfitdf.shape[0] > 0:
-        info.update(fit_stats_split(rfitdf, sfitdf))
-        info.update(fit_stats(rfitdf))
-    

@@ -33,10 +33,9 @@ def injected_lc(n=80, seed=0, u0=0.05, tE=20.0, t0=100.0, span=200.0):
 # degenerate inputs
 # --------------------------------------------------------------------------
 
-def test_empty_lightcurve_raises():
-    # documents current behaviour: no guard for an empty curve (see AUDIT)
-    with pytest.raises(IndexError):
-        nscml.find_persistent_excursions(make_lc([], []))
+def test_empty_lightcurve_returns_empty():
+    # empty curve is now guarded (was an unguarded IndexError before the audit fix)
+    assert nscml.find_persistent_excursions(make_lc([], [])) == []
 
 
 @pytest.mark.parametrize('n', [1, 2, 3])

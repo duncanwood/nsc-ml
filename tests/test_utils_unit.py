@@ -103,3 +103,23 @@ def test_reduce_and_nondetections():
     exc = {'a': [np.array([1, 2])], 'b': [], 'c': [np.array([3])]}
     assert set(nscml.reduce_excursions(exc)) == {'a', 'c'}
     assert nscml.get_nondetections(exc) == ['b']
+
+
+def test_split_real_synth_df_uses_ml_token():
+    df = pd.DataFrame({'objectid': ['163053_2831',
+                                    '163053_2831_ml_57990.00_15.00_0.05000',
+                                    'ml_galaxy_7']})  # contains 'ml' but not '_ml_'
+    rdf, sdf = nscml.split_real_synth_df(df)
+    assert list(sdf['objectid']) == ['163053_2831_ml_57990.00_15.00_0.05000']
+    assert set(rdf['objectid']) == {'163053_2831', 'ml_galaxy_7'}  # not misclassified
+
+
+def test_consolidate_raises_on_metadata_mismatch(tmp_path):
+    import pickle
+    f1, f2 = tmp_path / 'a.pkl', tmp_path / 'b.pkl'
+    with open(f1, 'wb') as f:
+        pickle.dump(({'outdir': str(tmp_path), 'tag': 1}, {}, {'o1': []}), f)
+    with open(f2, 'wb') as f:
+        pickle.dump(({'outdir': str(tmp_path), 'tag': 2}, {}, {'o2': []}), f)
+    with pytest.raises(ValueError):
+        nscml.consolidate_search_files_for_excursions([str(f1), str(f2)])
