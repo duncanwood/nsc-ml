@@ -55,10 +55,10 @@ def test_normalize_computes_deltamag_from_measurement():
         assert col in out.columns
 
 
-def test_normalize_flux_space_not_implemented():
-    with pytest.raises(NotImplementedError):
+def test_normalize_rejects_unknown_space():
+    with pytest.raises(ValueError):
         nscml.normalize(pd.DataFrame({'mjd': [1.0]}),
-                        nscml.LightcurveSchema(space='flux'))
+                        nscml.LightcurveSchema(space='lumens', measurement='x'))
 
 
 def test_normalize_requires_value_or_measurement():
