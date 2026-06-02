@@ -30,7 +30,7 @@ __all__ = [
     'make_instrument', 'get_default_args', 'convert_to_range_index',
     'well_sampled_region', 'get_well_sampled_objects',
     'get_just_well_sampled_objects', 'microlensing_amplification', 'ml_jac',
-    'amp_to_mag', 'synth_objid', 'add_microlensing_event', 'ml_f',
+    'amp_to_mag', 'synth_objid', 'add_microlensing_event', 'ml_f', 'ml_f_flux',
     'generate_synthetic_microlensing_events_from_population', 'ks_weighted',
     'reject_low_error_outliers_args', 'reject_outliers_args', 'reject_outliers',
     'sparse_gaussian_wma', 'sparse_gaussian_wms', 'sparse_gaussian_window_iter',
@@ -259,6 +259,14 @@ def add_microlensing_event(df: pd.DataFrame, **lensing_params):
 @njit
 def ml_f(*x):
     return amp_to_mag(microlensing_amplification(*x))
+
+@njit
+def ml_f_flux(*x):
+    # Flux-space PSPL model: fractional flux s = F_obs/F_base - 1.
+    # microlensing_amplification already returns the (blended) flux ratio
+    # F_obs/F_base, so this is just that minus 1 -- no amp_to_mag, no magnitude
+    # sign flip. (Pair with jac=None: ml_jac is the magnitude Jacobian.)
+    return microlensing_amplification(*x) - 1.0
 
 def generate_synthetic_microlensing_events_from_population(
         lcfiles, events_file, ws_regions, outdir, outname, rng=None):
@@ -571,7 +579,7 @@ def find_persistent_excursions(df, outliers_cutoff=OUTLIERS_CUTOFF, cut_outliers
         outliers_cutoff_data=OUTLIERS_CUTOFF_DATA,
         z_threshold=Z_THRESHOLD, timescale=DETECTION_TIMESCALE_DAYS, n_measured=N_MEASURED,
         duration=DURATION_DAYS, restrict_to_indices=None, usescatter=True,
-        temper_errors=None):
+        temper_errors=None, space='mag'):
     df = df.sort_values('mjd')
     if df.shape[0] == 0:
         return []
@@ -591,8 +599,12 @@ def find_persistent_excursions(df, outliers_cutoff=OUTLIERS_CUTOFF, cut_outliers
         errs = np.sqrt(errs**2 + scatter**2)
     # A brightening lowers the magnitude, so a real event appears as a negative
     # delta-mag excursion below -z_threshold sigma (errs includes the local
-    # scatter when usescatter is set).
-    excursions = wma / np.sqrt(std**2 + errs**2) < -z_threshold
+    # scatter when usescatter is set). In flux space the signal is fractional
+    # flux (s = F/F_ref - 1), so an event is a POSITIVE bump; the test stays
+    # one-sided, just the other way (negative flux dips are eclipses, not
+    # microlensing).
+    significance = wma / np.sqrt(std**2 + errs**2)
+    excursions = (significance > z_threshold) if space == 'flux' else (significance < -z_threshold)
 
     if restrict_to_indices is not None:
         excursions = excursions & df.index.isin(restrict_to_indices)
@@ -710,11 +722,15 @@ def extend_lc(df, region, context_size=CONTEXT_SIZE_DAYS):
 def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_MIN_OUTSIDE_FIT,
                    outliers_cutoff=OUTLIERS_CUTOFF, temper_errors=TEMPER_ERRORS_FIT, n_ks_gaussian=N_KS_GAUSSIAN,
                    context_size=CONTEXT_SIZE_DAYS, crossing_time_guess=CROSSING_TIME_GUESS_DAYS,
-                   rng=None):
+                   rng=None, space='mag'):
     # rng: pass a seeded numpy Generator for a reproducible small-sample KS
     # reference; defaults to a fresh (entropy-seeded) Generator.
+    # space: 'mag' (delta-mag model ml_f + analytic Jacobian) or 'flux'
+    # (fractional-flux model ml_f_flux; jac=None because ml_jac carries the
+    # magnitude -2.5/ln10 chain factor and is wrong for a flux model).
     if rng is None:
         rng = np.random.default_rng()
+    model, jac = (ml_f_flux, None) if space == 'flux' else (ml_f, ml_jac)
     fitresults = []
     fitfails = []
     fitdups = []
@@ -745,7 +761,7 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_M
 
                 try:
                     with warnings.catch_warnings(action="ignore"):
-                        fitresult=optimize.curve_fit(ml_f, mjds, dms, 
+                        fitresult=optimize.curve_fit(model, mjds, dms,
                                         p0=(1, crossing_time_guess ,np.mean(mjds)),
                                         sigma=errs,full_output=False,
                                         absolute_sigma=True,
@@ -753,7 +769,7 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_M
                                                  np.diff(np.percentile(mjds,(0,100)))],
                                         bounds=([0, 1, mjds[0] - FIT_TIME_PAD_DAYS],
                                                 [5, FIT_TIME_PAD_DAYS, mjds[-1] + FIT_TIME_PAD_DAYS]),
-                                        jac=ml_jac)
+                                        jac=jac)
                 except RuntimeError:
                     fitfails.append((objid, i))
                     continue
@@ -765,7 +781,7 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_M
                     continue
                 objfits.append(list(fitp))
 
-                fitmags = ml_f(mjds,*fitp)
+                fitmags = model(mjds,*fitp)
                 outside_fit_df = df.loc[df.index.difference(ext_region_full_df.index)]
 
                 # Compare the PSPL-fit residuals to the out-of-event photometry
