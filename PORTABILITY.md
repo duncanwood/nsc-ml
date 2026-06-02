@@ -185,11 +185,12 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   audit; see README.md).
 - **Documented data contract:** exact required columns, dtypes, units, and sort
   order, in one place (the `LightcurveSchema` above formalizes it).
-- **A high-level in-memory API:** today the user wires `search -> fit -> cuts`
-  by hand over parquet files with pickle intermediates. A
-  `detect(lightcurves_df, schema, **params) -> fit_df` that runs the whole
-  pipeline in memory would make small datasets and notebook use trivial; keep
-  the file pipeline for scale.
+- **A high-level in-memory API -- DONE.** `detect(df, schema, **params) -> fit_df`
+  (`nsctools.detect`) runs normalize -> find_persistent_excursions -> fit ->
+  make_fit_excursions_df entirely in memory (no parquet/pickle intermediates; the
+  fit reuses the new `fit_excursions(lc_df=)` path). `restrict_well_sampled=True`
+  mirrors the NSC well-sampled search; unknown params raise. The file pipeline
+  (`search_files_for_microlensing_events`) stays for scale.
 - **Separate library from NSC specifics:** move `magstr`, `make_instrument`,
   `color_filter`, `marker_map` into `nscml/surveys/nsc.py`. The core should not
   import DECam instrument codes.
@@ -224,8 +225,10 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   **Still TODO:** cadence/event-population retune for LSST, and end-to-end
   validation on the public DP0.2 (RSP access -- no local Rubin data on the dev
   machine).
-- **Phase 3:** high-level `detect()` in-memory API; LSST example notebook; CI;
-  docstrings/docs.
+- **Phase 3 (in progress):** high-level `detect(df, schema)` in-memory API --
+  DONE (`nsctools.detect`; 5 tests; full suite 99 green, mag goldens
+  byte-identical). Remaining: LSST cadence/event-population retune, an LSST
+  example (notebook or script), and CI.
 
 ---
 

@@ -258,3 +258,63 @@ def test_generate_synthetic_flux_mode_runs_and_injects(tmp_path):
     synth = pd.read_parquet(os.path.join(base, 'lc-synth-fxsynth.parquet'))
     assert synth['deltamag'].max() > 0.1                # positive flux bump injected
     assert (synth['originalid'].astype(str) == 'ev').all()
+
+
+# --------------------------------------------------------------------------
+# the high-level in-memory detect(df, schema) API
+# --------------------------------------------------------------------------
+
+def test_detect_flux_recovers_event():
+    """detect() end-to-end on a raw flux table: normalize -> find -> fit."""
+    out = nscml.detect(synth_flux_lc(), FLUX_SCHEMA, rng=np.random.default_rng(0))
+    assert len(out) >= 1
+    row = out.iloc[0]
+    assert row['crossing_time'] == pytest.approx(40.0, rel=0.25)
+    assert row['peak_time'] == pytest.approx(200.0, abs=5.0)
+
+
+def test_detect_mag_space_recovers_event():
+    """detect() with the default NSC (magnitude) schema on an injected mag event."""
+    n = 200
+    t = np.sort(np.random.default_rng(5).uniform(0, 400, n))
+    base = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t, 'mag_auto': np.full(n, 20.0),
+                         'deltamag': np.zeros(n), 'magerr_auto': np.full(n, 0.02),
+                         'filter': ['r'] * n})
+    lc = nscml.add_microlensing_event(base, space='mag',
+                                      impact_parameter=0.2, crossing_time=40.0, peak_time=200.0)
+    out = nscml.detect(lc, rng=np.random.default_rng(0))        # default schema = NSC mag
+    assert len(out) >= 1
+    row = out.iloc[0]
+    assert row['crossing_time'] == pytest.approx(40.0, rel=0.3)
+    assert row['peak_time'] == pytest.approx(200.0, abs=5.0)
+
+
+def test_detect_unknown_param_raises():
+    with pytest.raises(ValueError, match='Unknown parameters'):
+        nscml.detect(synth_flux_lc(n=10), FLUX_SCHEMA, not_a_real_param=1)
+
+
+def test_detect_empty_when_no_well_sampled_region():
+    """A sparse light curve has no well-sampled region to search -> an empty
+    result with the canonical columns (so callers can rely on the schema)."""
+    lc = pd.DataFrame({'objectid': ['ev'] * 4, 'mjd': [0.0, 100.0, 200.0, 300.0],
+                       'flux': [5000.0, 5010.0, 4990.0, 5005.0], 'fluxerr': [50.0] * 4,
+                       'filter': ['r'] * 4})
+    out = nscml.detect(lc, FLUX_SCHEMA)
+    assert len(out) == 0
+    for c in ('objectid', 'excnum', 'crossing_time', 'peak_time', 'pval'):
+        assert c in out.columns
+
+
+def test_detect_matches_manual_file_pipeline(tmp_path):
+    """detect() reproduces the file-based pipeline it wraps (normalize -> find ->
+    fit -> make_df); the fitted parameters are curve_fit outputs, so they match
+    independent of the KS rng."""
+    lc = synth_flux_lc()
+    frame = nscml.normalize(lc, FLUX_SCHEMA)
+    _, manual = _run('flux', frame, tmp_path, 'man')                   # file-backed pipeline
+    auto = nscml.detect(lc, FLUX_SCHEMA, restrict_well_sampled=False,   # match _run (no ws restriction)
+                        rng=np.random.default_rng(0))
+    assert len(auto) == len(manual) >= 1
+    for col in ('crossing_time', 'peak_time', 'impact_parameter'):
+        np.testing.assert_allclose(sorted(auto[col]), sorted(manual[col]), rtol=1e-6)

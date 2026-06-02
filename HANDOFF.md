@@ -43,8 +43,11 @@ this branch (an intentional RNG re-capture, `pipeline_small.json`).
    `add_microlensing_event(space='flux')` and `generate_synthetic_..._from_population(space='flux')`
    map `F -> F*A` (`s -> (s+1)*A - 1`, `sigma_s -> sigma_s*A`); 6 tests incl. the
    recovery yardstick. mag goldens byte-identical (94 tests green).
-3. Cadence/event-population retune for LSST; a high-level in-memory
-   `detect(df, schema)` API; CI; DP0.2 end-to-end validation.
+3. Partly done. **`detect(df, schema)` in-memory API — DONE** (`nscml.detect`:
+   normalize → find → fit → df, no temp files; `restrict_well_sampled=True`
+   mirrors the NSC search; 5 tests; full suite 99 green, mag goldens
+   byte-identical). Remaining: LSST cadence/event-population retune, an LSST
+   example (notebook/script), CI, and DP0.2 end-to-end validation.
 
 ## Things to know (the non-obvious bits)
 

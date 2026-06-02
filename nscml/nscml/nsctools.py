@@ -18,6 +18,9 @@ from numba import njit
 
 import tqdm
 
+# schema.py imports nothing from nsctools, so this relative import is cycle-free.
+from .schema import NSC_SCHEMA, normalize
+
 # Explicit public API so `from .nsctools import *` (in __init__) does not leak
 # the imported np/pd/os/re/etc. into the package namespace.
 __all__ = [
@@ -43,7 +46,7 @@ __all__ = [
     'float_cols_to_double', 'strip_objid', 'find_persistent_excursions',
     'search_files_for_excursions', 'consolidate_search_files_for_excursions',
     'reduce_excursions', 'get_nondetections', 'compute_file_map', 'extend_lc',
-    'fit_excursions', 'make_fit_excursions_df', 'search_for_params',
+    'fit_excursions', 'make_fit_excursions_df', 'detect', 'search_for_params',
     'common_params', 'default_args_of_functions',
     'search_files_for_microlensing_events', 'cut_by_npoints', 'cut_by_pval',
     'cut_high_points_low_p', 'cut_high_points_inout_low_p', 'cut_pcov',
@@ -746,20 +749,24 @@ def extend_lc(df, region, context_size=CONTEXT_SIZE_DAYS):
 def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_MIN_OUTSIDE_FIT,
                    outliers_cutoff=OUTLIERS_CUTOFF, temper_errors=TEMPER_ERRORS_FIT, n_ks_gaussian=N_KS_GAUSSIAN,
                    context_size=CONTEXT_SIZE_DAYS, crossing_time_guess=CROSSING_TIME_GUESS_DAYS,
-                   rng=None, space='mag'):
+                   rng=None, space='mag', lc_df=None):
     # rng: pass a seeded numpy Generator for a reproducible small-sample KS
     # reference; defaults to a fresh (entropy-seeded) Generator.
     # space: 'mag' (delta-mag model ml_f + analytic Jacobian) or 'flux'
     # (fractional-flux model ml_f_flux; jac=None because ml_jac carries the
     # magnitude -2.5/ln10 chain factor and is wrong for a flux model).
+    # lc_df: an in-memory canonical-frame DataFrame to fit instead of reading
+    # lcfiles (the detect() path). When given, lcfiles is ignored; the result
+    # pickle is written only if metadata carries 'outdir' and 'fitoutfile'.
     if rng is None:
         rng = np.random.default_rng()
     model, jac = (ml_f_flux, None) if space == 'flux' else (ml_f, ml_jac)
     fitresults = []
     fitfails = []
     fitdups = []
-    for lcfile in tqdm.tqdm(lcfiles):
-        filedf = pd.read_parquet(lcfile)
+    sources = [lc_df] if lc_df is not None else lcfiles
+    for source in tqdm.tqdm(sources):
+        filedf = source if lc_df is not None else pd.read_parquet(source)
         gb = filedf.groupby('objectid',observed=True)
         for objid in tqdm.tqdm(list(gb.groups.keys()), leave=False):
 
@@ -826,11 +833,12 @@ def fit_excursions(excursions, lcfiles,  metadata, params, n_min_outside_fit=N_M
 
                 fitresults.append([objid, i, ksresult, fitresult, 
                                    ext_region_df.shape[0],len(outside_fit_df), kstwosided])
-    outpath = os.path.join(metadata['outdir'], metadata['fitoutfile'])
-    os.makedirs(metadata['outdir'], exist_ok=True)
-    with open(outpath, 'wb') as f:
-        pickle.dump((fitresults, fitfails, fitdups, metadata, params), f)
-    return     fitresults, fitfails, fitdups
+    if metadata.get('outdir') and metadata.get('fitoutfile'):
+        outpath = os.path.join(metadata['outdir'], metadata['fitoutfile'])
+        os.makedirs(metadata['outdir'], exist_ok=True)
+        with open(outpath, 'wb') as f:
+            pickle.dump((fitresults, fitfails, fitdups, metadata, params), f)
+    return fitresults, fitfails, fitdups
 
 def make_fit_excursions_df(fitresults):
 
@@ -860,6 +868,65 @@ def make_fit_excursions_df(fitresults):
         data['two_sample'].append(v[6])
 
     return pd.DataFrame(data)
+
+def detect(df, schema=NSC_SCHEMA, *, restrict_well_sampled=True, rng=None, **params):
+    """High-level, in-memory microlensing detection: a raw survey table in, a
+    tidy table of fitted PSPL events out -- the convenience entry point.
+
+    All in memory: ``normalize(df, schema)`` -> the canonical detector frame
+    (magnitude or fractional flux, per ``schema.space``) -> per-object
+    ``find_persistent_excursions`` -> ``fit_excursions`` (``lc_df=`` path, no
+    temp files) -> ``make_fit_excursions_df``.
+
+    restrict_well_sampled
+        When True (default; the NSC pipeline's behavior) each object is searched
+        only within its well-sampled regions (``well_sampled_region``); objects
+        with none are skipped. False searches the whole light curve.
+    rng
+        Seeded ``numpy`` Generator for the reproducible small-sample KS reference
+        in the fit.
+    **params
+        Override detector/fit defaults by keyword (e.g. ``z_threshold=``,
+        ``timescale=``, ``crossing_time_guess=``, ``context_size=``); an unknown
+        name raises ``ValueError``.
+
+    Returns a DataFrame with one row per fitted excursion (``objectid, excnum,
+    pval, n_fit, n_out, cond_num, impact_parameter, crossing_time, peak_time,
+    two_sample``), empty with those columns if nothing is detected. For large,
+    file-backed datasets use ``search_files_for_microlensing_events`` instead.
+    """
+    known = default_args_of_functions([find_persistent_excursions, fit_excursions])
+    unknown = set(params) - set(known)
+    if unknown:
+        raise ValueError(f'Unknown parameters: {unknown}')
+
+    space = schema.space
+    frame = float_cols_to_double(normalize(df, schema))
+
+    exc_params = common_params(find_persistent_excursions, params)
+    for k in ('restrict_to_indices', 'space'):
+        exc_params.pop(k, None)
+    fit_params = common_params(fit_excursions, params)
+    for k in ('space', 'rng', 'lc_df'):
+        fit_params.pop(k, None)
+
+    excursions = {}
+    for objid, lc in frame.groupby('objectid', observed=True):
+        restrict = None
+        if restrict_well_sampled:
+            regions = well_sampled_region(lc)
+            if not regions:
+                continue
+            restrict = np.concatenate([np.asarray(r) for r in regions])
+        excursions[objid] = find_persistent_excursions(
+            lc, restrict_to_indices=restrict, space=space, **exc_params)
+    excursions = reduce_excursions(excursions)
+    if not excursions:
+        return make_fit_excursions_df([])
+
+    fitresults, _, _ = fit_excursions(excursions, None, {}, fit_params,
+                                      rng=rng, space=space, lc_df=frame, **fit_params)
+    return make_fit_excursions_df(fitresults)
 
 def search_for_params(files, params):
     finds = []
