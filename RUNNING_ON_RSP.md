@@ -174,7 +174,10 @@ events = nscml.detect(canonical, schema=nscml.LightcurveSchema(
 ```
 
 See [`examples/lsst_quickstart.py`](examples/lsst_quickstart.py) for the same flow
-end-to-end on synthetic LSST-shaped data (runs locally, no RSP needed).
+end-to-end on synthetic LSST-shaped data (runs locally, no RSP needed), and
+**[`examples/rsp_dp1_search.py`](examples/rsp_dp1_search.py)** for a ready-to-paste
+DP1 notebook: TAP-select variable `DiaObject`s, pull their `ForcedSourceOnDiaObject`
+light curves (joined to `Visit` for the time), and run `detect()` over real data.
 
 ## 5. Caveats and the open last mile
 
