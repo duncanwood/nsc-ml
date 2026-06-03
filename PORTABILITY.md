@@ -1,23 +1,23 @@
-# nscml -- portability & generalization audit
+# nscml: portability and generalization notes
 
-How to take this from "my NSC dissertation pipeline" to "a tool another person,
-telescope, or dataset (Rubin LSST in particular) can run." This is an audit /
-roadmap of written proposals, not applied changes.
+Notes on taking this from the NSC magnitude pipeline I wrote for my dissertation
+to a tool another person, telescope, or dataset (Rubin LSST in particular) can
+run. Some of it is done (marked below), the rest is a roadmap.
 
 ## Where it stands
 
-The detector is survey-agnostic in spirit -- a weighted-moving-average
-excursion test plus a PSPL fit -- but the code is wired to one concrete schema:
+The detector is survey-agnostic in spirit, a weighted-moving-average
+excursion test plus a PSPL fit, but the code is wired to one concrete schema:
 the NOIRLab Source Catalog (NSC), DECam-era band/instrument conventions, and
 **magnitudes**. Two coupling layers have to be loosened, in order of difficulty:
 
-1. **Column/band naming** (mechanical) -- the schema is hardcoded as bare
+1. **Column/band naming** (mechanical), the schema is hardcoded as bare
    string literals everywhere.
-2. **Magnitude vs flux** (substantive) -- the method is formulated in
+2. **Magnitude vs flux** (substantive), the method is formulated in
    magnitudes; LSST photometry is flux in nanojansky and can be negative. This
    is the real Rubin blocker.
 
-## 1. Schema coupling -- a data contract + adapter protocol
+## 1. Schema coupling: a data contract + adapter protocol
 
 Hardcoded assumptions, found by grep:
 
@@ -78,7 +78,7 @@ Two implementation paths, smallest-diff first:
 Recommendation: do the minimal shim + extract NSC-isms first (Phase 1 below);
 it is low-risk and immediately lets someone point the tool at their own columns.
 
-## 2. Magnitude vs flux -- the Rubin blocker (DONE: both implemented)
+## 2. Magnitude vs flux: the Rubin blocker (DONE: both implemented)
 
 nscml is a magnitude-space method: the detection signal is a **negative**
 delta-magnitude excursion, `amp_to_mag = -2.5 log10(A)`, and the PSPL model is
@@ -96,7 +96,7 @@ shows the *same* dip and they reinforce. Concretely, unblended:
     raw flux:        dF        = (A - 1) * F_base  # scales with per-band baseline (CHROMATIC)
     fractional flux: dF/F_base = A - 1             # same for every band  (achromatic again)
 
-So pooling *raw* flux across bands is wrong (a bright band dominates) -- the
+So pooling *raw* flux across bands is wrong (a bright band dominates), the
 concern is real. But **fractional flux** (equivalently the flux ratio
 `F_obs/F_base = A`) is achromatic again, and is the faithful flux-space twin of
 delta-mag. Under blending, both `dm` and fractional flux pick up the *same* weak
@@ -110,8 +110,8 @@ already an achromatic approximation in either space.
   `F > 0`, build delta-mag, and run the existing, fully-tested mag pipeline
   unchanged. Pros: zero core/kernel changes; reuses the validated pipeline and
   goldens; cross-band pooling intact. Cons: mag is undefined for `F <= 0`, so the
-  faint and difference-image epochs (common in LSST) must be dropped or clipped
-  -- losing exactly the low-SNR points and biasing the baseline; and flux->mag
+  faint and difference-image epochs (common in LSST) must be dropped or clipped,
+  losing exactly the low-SNR points and biasing the baseline. And flux->mag
   error is asymmetric and diverges as `F -> 0`, breaking the Gaussian-error
   assumption the WMA and KS rely on. Good for bright, high-SNR events; a fast
   first look.
@@ -135,24 +135,24 @@ baseline. After a thorough audit of every magnitude assumption in the codepath:
   `find_persistent_excursions(space='flux')` flips to a one-sided positive-bump
   test; `fit_excursions(space='flux')` fits `ml_f_flux = microlensing_amplification - 1`
   with `jac=None` (the analytic `ml_jac` carries the magnitude `-2.5/ln10` chain
-  factor -- *verified* wrong for flux). All WMA/scatter kernels, the KS ranking,
+  factor, *verified* wrong for flux). All WMA/scatter kernels, the KS ranking,
   the cuts, and outlier rejection are reused unchanged; `space='mag'` is the
   default everywhere, so the mag goldens are byte-identical.
 - (A) `flux_to_mag(df, schema)` converts flux->AB mag (`sigma_mag = 1.0857
   sigma_F/F`), drops non-positive-flux epochs (lossy; warns), and runs the
-  standard mag pipeline -- the comparison baseline.
+  standard mag pipeline, the comparison baseline.
 On a synthetic event (u0=0.2, tE=40, t0=200) the two paths recover consistent
-parameters (tE 38.2 vs 37.6, t0 200.0 vs 200.1) -- see `tests/test_flux_unit.py`.
+parameters (tE 38.2 vs 37.6, t0 200.0 vs 200.1), see `tests/test_flux_unit.py`.
 Remaining gotcha for real data: `F_ref` must be a positive baseline (template)
 flux, not a difference-image-flux median (the achromaticity assumption's failure
 mode). Multiplicative synthetic injection in flux is implemented:
 `add_microlensing_event(space='flux')` and
 `generate_synthetic_microlensing_events_from_population(space='flux')` map the
 observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
-`sigma_s -> sigma_s*A` -- the flux twin of the magnitude path's additive
+`sigma_s -> sigma_s*A`, the flux twin of the magnitude path's additive
 `-2.5 log10(A)` (which leaves `sigma_mag` unchanged).
 
-## 3. Running on Rubin LSST -- concrete recipe
+## 3. Running on Rubin LSST: concrete recipe
 
 > A step-by-step deployment recipe (install on the RSP, Butler/TAP access to the
 > data-release photometry, schema mapping) now lives in
@@ -160,17 +160,16 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
 > behind it.
 
 - **Data access:** DP1 (released June 2025) is access-gated to US/Chilean
-  institutions and named affiliates; the public, simulated **DP0.2** is the
-  easiest place to prototype an adapter without credentials. (See brain memory
-  M0000085 on Rubin access.) Plan the adapter against DP0.2, validate on DP1/DP2
-  when access is available.
+  institutions and named affiliates. The public, simulated **DP0.2** is the
+  easiest place to prototype an adapter without credentials. Plan the adapter
+  against DP0.2, and validate on DP1/DP2 when access is available.
 - **Tables / columns:** build per-object light curves from `ForcedSource` /
   `ForcedSourceOnDiaObject` (direct photometry) or `DiaSource` (difference
   photometry). Relevant fields: `objectId`, `band` (u/g/r/i/z/y),
   `psfFlux`/`psfFluxErr` in nJy, `coord_ra`/`coord_dec`. Time is
   `midpointMjdTai` for DiaSource; for ForcedSource the visit mid-time
   (`expMidptMJD`) is obtained by joining the Visit table. [1][2] (Confirm exact
-  names against the DP1 schema at release time -- they shift slightly between
+  names against the DP1 schema at release time, they shift slightly between
   data previews.)
 - **Adapter sketch** (`from_lsst`): join ForcedSource to Visit for the time,
   map `objectId->id`, `band->band`, `expMidptMJD->mjd`, `psfFlux->value`,
@@ -178,7 +177,7 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   `delta_flux` against the per-band median (the baseline).
 - **Cadence parameters:** `WS_INTERVAL_DAYS=50`, `WS_MAX_REVISIT_DAYS=10`, the
   detection `timescale`, and the crossing-time prior are tuned to NSC's cadence.
-  LSST WFD has different revisit (~few days) and season gaps -- retune these
+  LSST WFD has different revisit (~few days) and season gaps, retune these
   (now that they are named constants, this is a config change, not a code hunt).
 - **Event population:** `generate_synthetic_microlensing_events_from_population`
   takes a population table; supply an LSST-appropriate (tE, u0) distribution for
@@ -190,7 +189,7 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   audit; see README.md).
 - **Documented data contract:** exact required columns, dtypes, units, and sort
   order, in one place (the `LightcurveSchema` above formalizes it).
-- **A high-level in-memory API -- DONE.** `detect(df, schema, **params) -> fit_df`
+- **A high-level in-memory API, DONE.** `detect(df, schema, **params) -> fit_df`
   (`nsctools.detect`) runs normalize -> find_persistent_excursions -> fit ->
   make_fit_excursions_df entirely in memory (no parquet/pickle intermediates; the
   fit reuses the new `fit_excursions(lc_df=)` path). `restrict_well_sampled=True`
@@ -200,7 +199,7 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   `color_filter`, `marker_map` into `nscml/surveys/nsc.py`. The core should not
   import DECam instrument codes.
 - **Plotting is schema-coupled too:** `plot.py` indexes `color_filter[band]` and
-  `marker_map[instrument]` and reads `<band>mag` baseline columns -- drive these
+  `marker_map[instrument]` and reads `<band>mag` baseline columns, drive these
   from the schema/config so a new survey's bands render.
 - **Tooling:** type hints + numpydoc docstrings on the public API; a CI workflow
   (GitHub Actions) running the suite on 3.11/3.12; `logging` instead of
@@ -212,13 +211,13 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
 
 ## 5. Suggested phased plan
 
-- **Phase 1 (low-risk, high-value) -- DONE.** README + data contract;
+- **Phase 1 (low-risk, high-value), DONE.** README + data contract;
   `LightcurveSchema` + `normalize(df, schema)` (`nscml/schema.py`); NSC adapter
   namespace (`nscml/surveys/nsc.py`) re-exporting the NSC-specific helpers. No
   kernel changes; goldens unaffected; 8 new tests. (Physical relocation of the
-  NSC helpers out of `nsctools` is deferred -- notebooks still import them
+  NSC helpers out of `nsctools` is deferred, notebooks still import them
   there.)
-- **Phase 2 (flux/Rubin) -- DONE (detection core).** `space='flux'`
+- **Phase 2 (flux/Rubin), DONE (detection core).** `space='flux'`
   fractional-flux detection + fit, and the `flux_to_mag` baseline (section 2);
   mag goldens byte-identical; 7 new tests. The `from_lsst` adapter
   (`nscml/surveys/lsst.py`: ForcedSource/DiaSource -> fractional flux, with a
@@ -228,26 +227,26 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   `s -> (s+1)*A - 1` with `sigma_s -> sigma_s*A`) is built and tested (6 tests;
   the recovery yardstick round-trips a known event back through the detector).
   **Still TODO:** cadence/event-population retune for LSST, and end-to-end
-  validation on the public DP0.2 (RSP access -- no local Rubin data on the dev
+  validation on the public DP0.2 (RSP access, no local Rubin data on the dev
   machine).
 - **Phase 3 (mostly done):** the high-level `detect(df, schema)` in-memory API,
-  a runnable LSST example, and CI are all DONE -- `nsctools.detect` (5 tests);
+  a runnable LSST example, and CI are all DONE, `nsctools.detect` (5 tests);
   `examples/lsst_quickstart.py` (synthetic LSST -> `from_lsst`/`detect`,
   smoke-tested); GitHub Actions on macos-latest/arm64 (the goldens' capture arch,
   required for the bit-exact kernel tests). Full suite 100 green, mag goldens
   byte-identical. Remaining: (1) the LSST cadence/event-population retune is
-  **deferred by decision** -- the NSC defaults were chosen with Rubin in mind and
+  **deferred by decision**, the NSC defaults were chosen with Rubin in mind and
   are kept as-is; quantifying how well they suit the LSST WFD cadence is future
   research; (2) DP0.2/DP1 end-to-end validation on the RSP (needs an RSP account
-  / Rubin data) -- deployment recipe in [RUNNING_ON_RSP.md](RUNNING_ON_RSP.md)
+  / Rubin data), deployment recipe in [RUNNING_ON_RSP.md](RUNNING_ON_RSP.md)
   (stack is Python 3.12, so nscml installs; the numpy 1.x->2.x jump is the open
   risk to validate).
 
 ---
 
 Sources for the LSST specifics:
-- [1] DP1 -- Forced photometry tutorial: https://dp1.lsst.io/tutorials/notebook/105/notebook-105-3.html
-- [2] DP1 -- ForcedSource table / variable-star light curves:
+- [1] DP1, Forced photometry tutorial: https://dp1.lsst.io/tutorials/notebook/105/notebook-105-3.html
+- [2] DP1, ForcedSource table / variable-star light curves:
   https://dp1.lsst.io/tutorials/notebook/201/notebook-201-3.html ,
   https://dp1.lsst.io/tutorials/notebook/305/notebook-305-1.html
 - Rubin nanojansky calibration note: https://community.lsst.org/t/photocalib-has-replaced-calib-welcoming-our-nanojansky-overlords/3648

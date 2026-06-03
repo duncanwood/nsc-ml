@@ -1,4 +1,4 @@
-# nscml -- code map
+# nscml: code map
 
 A multi-band time-series outlier-detection method for finding gravitational
 microlensing events in survey photometry (NOIRLab Source Catalog, NSC). The
@@ -10,7 +10,7 @@ photometry. Synthetic events injected from a population model provide the
 recovery/contamination yardstick for tuning the selection cuts.
 
 The scientific core is a pair of `numba`-compiled windowed weighted moving
-average / scatter kernels; the rest is a parquet-backed batch pipeline.
+average / scatter kernels, and the rest is a parquet-backed batch pipeline.
 
 ## Package layout
 
@@ -104,7 +104,7 @@ Data flow, single object -> batch of files:
    excursion, fits the PSPL model with `scipy.optimize.curve_fit` (analytic
    `ml_jac`, bounded, `x_scale`d) over an extended window (`extend_lc`,
    `context_size` days of padding), then scores the fit residuals with
-   `ks_weighted` -- a two-sample test against the out-of-event photometry, or
+   `ks_weighted`, a two-sample test against the out-of-event photometry, or
    (too few outside points) against a synthetic Gaussian of the same weighted
    scatter, drawn from the injected `rng` (default: a fresh Generator; pass a
    seeded one for reproducibility). Returns `(fitresults, fitfails, fitdups)`.
@@ -132,7 +132,7 @@ All take the fit DataFrame and return a filtered copy.
 |---|---|
 | `cut_by_npoints(df, n)` | `n_fit + n_out >= n` |
 | `cut_by_pval(df, p)` | `pval >= p` |
-| `cut_pcov(df, cond_lim=1e5)` | `cond_num < cond_lim` -- drops degenerate/under-constrained fits |
+| `cut_pcov(df, cond_lim=1e5)` | `cond_num < cond_lim`, drops degenerate/under-constrained fits |
 | `cut_crossing_time(df, timemin=1, timemax=None)` | `timemin < crossing_time (< timemax)` |
 | `cut_high_points_low_p`, `cut_high_points_inout_low_p` | high-p OR low-count escape hatches |
 

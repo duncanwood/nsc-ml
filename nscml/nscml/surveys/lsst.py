@@ -1,7 +1,7 @@
 """Rubin LSST adapter (flux space).
 
-Maps an LSST flux light-curve table -- ForcedSource (direct photometry) or
-DiaSource (difference photometry) -- onto the canonical fractional-flux frame the
+Maps an LSST flux light-curve table, ForcedSource (direct photometry) or
+DiaSource (difference photometry), onto the canonical fractional-flux frame the
 detector consumes (``nscml.schema``, ``space='flux'``). LSST reports flux in
 nanojansky and difference fluxes can be negative, so detection runs on the
 achromatic fractional flux ``s = F/F_ref - 1`` (error-safe at low flux), not in
@@ -30,7 +30,7 @@ LSST_FORCEDSOURCE_SCHEMA = LightcurveSchema(
     measurement='psfFlux', error='psfFluxErr', value=None, space='flux')
 
 # Difference photometry: psfFlux is difference flux (can be negative; per-band
-# median ~ 0). Needs a positive template flux -- see from_lsst(template_flux_col).
+# median ~ 0). Needs a positive template flux, see from_lsst(template_flux_col).
 LSST_DIASOURCE_SCHEMA = LightcurveSchema(
     id='diaObjectId', time='midpointMjdTai', band='band',
     measurement='psfFlux', error='psfFluxErr', value=None, space='flux')
@@ -43,9 +43,9 @@ def from_lsst(df, schema=LSST_FORCEDSOURCE_SCHEMA, template_flux_col=None):
     median ``psfFlux`` is the reference flux ``F_ref``.
 
     DiaSource (difference flux): its per-band median is ~0, which ``normalize``
-    rejects (``F_ref <= 0``). Pass ``template_flux_col`` -- a column of positive
+    rejects (``F_ref <= 0``). Pass ``template_flux_col``, a column of positive
     per-epoch template/reference flux (the object's quiescent flux in that band,
-    e.g. from the coadd) -- so the science flux ``F = difference + template`` is
+    e.g. from the coadd), so the science flux ``F = difference + template`` is
     normalized, and its per-band median (~ the template) is ``F_ref``. Use
     ``schema=LSST_DIASOURCE_SCHEMA`` for the DiaSource column names.
 

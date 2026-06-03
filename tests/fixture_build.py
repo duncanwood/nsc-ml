@@ -7,7 +7,7 @@ inputs.
 
 Two data substrates:
 
-* Kernel inputs -- fixed analytic arrays defined in code, no I/O, used for
+* Kernel inputs, fixed analytic arrays defined in code, no I/O, used for
   the WMA/WMS/window/amplification kernel goldens.
 * A small real photometry slice (``fixtures/real_objects.parquet``, four
   well-sampled NSC objects extracted once from ``notebooks/test.parquet``)

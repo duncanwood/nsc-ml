@@ -11,14 +11,14 @@ The detector reads four canonical per-epoch columns and groups by object:
 plus an optional ``filter`` (band) column used by the diagnostics.
 
 ``LightcurveSchema`` maps an arbitrary survey's column names onto those, and
-``normalize`` applies the mapping -- renaming columns and, when the survey gives
+``normalize`` applies the mapping, renaming columns and, when the survey gives
 raw measurements rather than a baseline-subtracted signal, computing ``deltamag``
 as (measurement - per-object/per-band median). This keeps the numba kernels and
 the file pipeline survey-agnostic: hand them ``normalize(df, schema)``.
 
 ``space='mag'`` subtracts a baseline magnitude (the NSC default). ``space='flux'``
 builds the achromatic **fractional flux** ``s = F/F_ref - 1`` with error
-``sigma_F/F_ref`` -- the correct signal for flux surveys such as Rubin LSST,
+``sigma_F/F_ref``, the correct signal for flux surveys such as Rubin LSST,
 where flux can be negative. In flux mode the canonical ``deltamag`` /
 ``magerr_auto`` columns carry ``s`` / ``sigma_s`` (same names, flux meaning) and
 the detector is run with ``space='flux'``. ``flux_to_mag`` is the alternative,
@@ -116,7 +116,7 @@ def flux_to_mag(df, schema, zeropoint=AB_ZEROPOINT_NJY):
     """Option-1 flux ingest: convert a flux table to the canonical MAGNITUDE
     frame so the standard ``space='mag'`` pipeline runs unchanged.
 
-    Non-positive-flux epochs are dropped (magnitude is undefined there) -- lossy,
+    Non-positive-flux epochs are dropped (magnitude is undefined there), lossy,
     and biased near the noise floor; for the negative-flux-safe path use
     ``normalize(df, schema)`` with ``schema.space='flux'``. ``schema.measurement``
     is the flux column and ``schema.error`` its 1-sigma error, in the same flux

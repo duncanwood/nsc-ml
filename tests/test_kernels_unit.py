@@ -39,7 +39,7 @@ def test_sparse_wma_single_point():
 
 def test_sparse_equals_dense_when_unclipped():
     """With nclip large enough that no pair is dropped, the O(n^2) sparse
-    kernel and the dense matrix kernel are the same estimator -- mean, error
+    kernel and the dense matrix kernel are the same estimator, mean, error
     and scatter must agree to round-off. This is the core consistency check."""
     ki = fb.kernel_inputs()
     y, t, e, w = ki['y'], ki['t'], ki['errs'], ki['weights']
@@ -182,7 +182,7 @@ def test_ks_weighted_identical_samples():
 
 
 def test_ks_weighted_weight_sensitivity():
-    """Reweighting one sample changes the statistic -- weights are honoured."""
+    """Reweighting one sample changes the statistic, weights are honoured."""
     a = np.array([0.0, 1.0, 2.0, 3.0])
     b = np.array([0.5, 1.5, 2.5])
     d_flat, _ = nscml.ks_weighted(a, b, np.ones(4), np.ones(3))

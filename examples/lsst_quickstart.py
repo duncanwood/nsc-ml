@@ -1,13 +1,13 @@
 """Rubin LSST quickstart: find a microlensing event in LSST-shaped photometry.
 
 The same detector that runs on NOIRLab Source Catalog magnitudes runs on Rubin
-LSST flux, unchanged -- only the *schema* (column names + ``space='flux'``)
+LSST flux, unchanged, only the *schema* (column names + ``space='flux'``)
 differs. This script builds synthetic LSST-shaped light curves with a known
 injected event, so it runs anywhere with no data access, then recovers the event
 two ways:
 
-  1. ForcedSource (direct photometry): ``detect(df, LSST_FORCEDSOURCE_SCHEMA)``
-     -- detect() normalizes the per-band flux to the achromatic fractional flux
+  1. ForcedSource (direct photometry): ``detect(df, LSST_FORCEDSOURCE_SCHEMA)``.
+     detect() normalizes the per-band flux to the achromatic fractional flux
      ``s = F/F_ref - 1`` and runs the flux-space detector in one call.
   2. DiaSource (difference photometry): ``from_lsst(df, LSST_DIASOURCE_SCHEMA,
      template_flux_col=...)`` folds the positive template flux back in (a
@@ -33,7 +33,7 @@ from nscml.surveys.lsst import (from_lsst, LSST_FORCEDSOURCE_SCHEMA,
 
 # Injected event (the ground truth we try to recover).
 U0, TE, T0 = 0.15, 40.0, 100.0
-# Per-band quiescent flux in nanojansky -- deliberately very different across
+# Per-band quiescent flux in nanojansky, deliberately very different across
 # bands so that pooling *raw* flux would be dominated by the bright band; the
 # fractional flux s = A - 1 is achromatic and pools correctly.
 BANDS_FBASE = {'g': 2000.0, 'r': 5000.0, 'i': 9000.0}

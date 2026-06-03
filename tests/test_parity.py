@@ -1,7 +1,7 @@
 """Parity: the live library must reproduce the committed goldens.
 
 Each test re-runs the exact capture routine (redirected to a temp dir) and
-compares to golden/. This is the regression guard for the cleanup -- removing
+compares to golden/. This is the regression guard for the cleanup, removing
 comments and dead code must leave every one of these byte-for-byte unchanged
 (kernels, KS, seeded paths) or within solver tolerance (fit floats).
 """

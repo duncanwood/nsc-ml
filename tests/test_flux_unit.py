@@ -21,7 +21,7 @@ def synth_flux_lc(u0=0.2, tE=40.0, t0=200.0, fbase=5000.0, sigma=50.0,
                   span=400.0, n=200, band='r', seed=0):
     """One object's flux light curve with an injected PSPL event:
     F = fbase * A(u(t)) + Gaussian(sigma).  A is the flux ratio. Defaults are a
-    realistic, slow event (tE >> the 5-day WMA window) -- a very fast/strong
+    realistic, slow event (tE >> the 5-day WMA window), a very fast/strong
     event inflates the in-window scatter above the signal and is suppressed by
     the usescatter self-calibration (true in mag space too)."""
     rng = np.random.default_rng(seed)
@@ -146,7 +146,7 @@ def test_flux_and_flux_to_mag_recover_consistent_params(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# synthetic injection (multiplicative, flux space) -- the recovery yardstick
+# synthetic injection (multiplicative, flux space), the recovery yardstick
 # --------------------------------------------------------------------------
 
 def _quiescent_flux_lc(fbase=5000.0, sigma=50.0, span=400.0, n=200, band='r', seed=1):

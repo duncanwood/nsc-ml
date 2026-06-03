@@ -8,25 +8,25 @@ release you actually use and override the schema accordingly.
 
 > **Status:** this is a deployment recipe, not yet an end-to-end validated run.
 > No Rubin data lives on the dev machine, so the steps below are assembled from
-> the public DP0.2 / DP1 documentation (sources at the bottom). The last mile --
-> running it in an RSP notebook against real tables -- is the open task.
+> the public DP0.2 / DP1 documentation (sources at the bottom). The last mile,
+> running it in an RSP notebook against real tables, is the open task.
 
 ## TL;DR
 
 | Question | Answer |
 |---|---|
 | Python compatible? | **Yes.** The RSP stack is Science Pipelines **v29.2 / Python 3.12**; nscml needs `>=3.11`. |
-| Which data? | **DP0.2** (simulated DC2) is the public sandbox; **DP1** (real, ComCam, released 2025-06-30) is **data-rights-gated** (US/Chile scientists + students qualify -- you do). |
+| Which data? | **DP0.2** (simulated DC2) is the public sandbox; **DP1** (real, ComCam, released 2025-06-30) is **data-rights-gated** (US/Chile scientists + students qualify, you do). |
 | How to install? | `pip install --user` in an RSP terminal (no root; pip wraps conda over `rubin-env`). |
 | How to get light curves? | **TAP/ADQL** for per-object light curves (Qserv-backed, ergonomic); **Butler** for tract/patch table retrieval. |
 | Detector entry point | `nscml.detect(df, schema)` with a flux `LightcurveSchema` (`space='flux'`). |
-| Main caveat | nscml was validated on **numpy 1.23.5**; the stack is **numpy 2.x** -- install *without* the pinned `requirements.txt` and run the test suite first. |
+| Main caveat | nscml was validated on **numpy 1.23.5**; the stack is **numpy 2.x**, install *without* the pinned `requirements.txt` and run the test suite first. |
 
 ## 1. Account and data access
 
 Get an RSP account at <https://rsp.lsst.io/> (sign-in via your institutional
-identity). **DP0.2** is available to anyone with an account. **DP1** -- the first
-release of *real* Rubin data (LSSTComCam, ~3.5 TB, 2025-06-30) -- is restricted
+identity). **DP0.2** is available to anyone with an account. **DP1**, the first
+release of *real* Rubin data (LSSTComCam, ~3.5 TB, 2025-06-30), is restricted
 to Rubin data-rights holders: all scientists and students in the US and Chile,
 plus named international in-kind members. As a US-based physicist you qualify;
 request access through the RSP sign-up.
@@ -48,7 +48,7 @@ pip install --user "git+https://github.com/duncanwood/nsc-ml.git#subdirectory=ns
 The package lives in the `nscml/` subdirectory of the repo (the `--subdirectory`
 is required). `--user` drops it in `~/.local/...`, visible from the LSST kernel.
 
-Then **validate before trusting it** -- the stack is numpy 2.x and nscml's
+Then **validate before trusting it**, the stack is numpy 2.x and nscml's
 goldens were captured on numpy 1.23.5:
 
 ```bash
@@ -72,7 +72,7 @@ python -m ipykernel install --user --name nscml --display-name "nscml (pinned)"
 ```
 
 Then **access data in the stack kernel** (Butler/TAP live there), save the light
-curves to parquet, and **detect in the `nscml` kernel** -- nscml's file pipeline
+curves to parquet, and **detect in the `nscml` kernel**, nscml's file pipeline
 already reads parquet, so the two kernels hand off cleanly through disk.
 
 ## 3. Pull a light curve
@@ -114,7 +114,7 @@ WHERE  fs.diaObjectId = <id>
 ```
 
 DP1 also carries `psfDiffFlux` / `psfDiffFluxErr` (forced flux on the *difference*
-image) -- that's difference photometry; see the schema note in step 4.
+image), that's difference photometry; see the schema note in step 4.
 
 ### 3b. Butler (best for tract/patch sweeps)
 
@@ -130,7 +130,7 @@ fsrc = butler.get('forcedSourceTable', dataId={'tract': 4431, 'patch': 17})
 # butler.get('forcedSourceOnDiaObjectTable', dataId={'tract': 4431, 'patch': 16})
 ```
 
-The forced-source tables don't carry the visit time directly -- join on the
+The forced-source tables don't carry the visit time directly, join on the
 visit key (`ccdVisitId` / `visit`) to the `CcdVisit` / `Visit` table to add
 `expMidptMJD`, same as the ADQL join above. The Butler is organized by
 tract/patch, so it's the right tool for an area sweep; for a single known object,
@@ -153,7 +153,7 @@ from nscml.surveys.lsst import from_lsst, LSST_FORCEDSOURCE_SCHEMA, LSST_DIASOUR
 events = nscml.detect(df, schema=LSST_FORCEDSOURCE_SCHEMA)   # df has objectId, expMidptMJD, band, psfFlux, psfFluxErr
 ```
 
-Adjust the schema to whatever columns you actually pulled -- e.g. for
+Adjust the schema to whatever columns you actually pulled, e.g. for
 `ForcedSourceOnDiaObject` with direct `psfFlux`, the id is `diaObjectId`:
 
 ```python
@@ -192,7 +192,7 @@ end-to-end on synthetic LSST-shaped data (runs locally, no RSP needed).
   LSST `(tE, u0)` population) is deliberate future research, not yet done.
 - **Confirm the schema against the release.** Column and table names shift
   between data previews; the DP1 names (`expMidptMJD`, `psfFlux`, `diaObjectId`,
-  the `Visit` join) are the current best reference -- verify in the release's
+  the `Visit` join) are the current best reference, verify in the release's
   schema browser and override the `LightcurveSchema` if they differ.
 
 ## Sources

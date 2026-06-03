@@ -2,7 +2,7 @@
 
 The cuts are simple boolean masks, but the boundary semantics (strict vs
 inclusive) are what decide whether a real event survives, so they are pinned
-explicitly here -- especially the cond_lim=1e5 degeneracy cut.
+explicitly here, especially the cond_lim=1e5 degeneracy cut.
 """
 import numpy as np
 import pandas as pd

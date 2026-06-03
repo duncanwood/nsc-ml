@@ -2,7 +2,7 @@
 
 find_persistent_excursions (via search_files_for_excursions) -> fit_excursions
 -> make_fit_excursions_df -> cuts, reading and writing real parquet/pickle.
-Assertions are structural/scientific (not float-exact -- that is test_parity).
+Assertions are structural/scientific (not float-exact, that is test_parity).
 """
 import os
 import pickle

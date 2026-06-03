@@ -256,7 +256,7 @@ def add_microlensing_event(df: pd.DataFrame, *, space='mag', **lensing_params):
       frame (``schema.normalize(space='flux')``). The stored signal
       ``s = F/F_ref - 1`` becomes ``s' = (s + 1)*A - 1`` (i.e. observed flux
       F -> F*A), and the fractional-flux error ``sigma_s = sigma_F/F_ref`` scales
-      to ``sigma_s * A`` -- which holds ``sigma_F/F`` invariant, exactly as the
+      to ``sigma_s * A``, which holds ``sigma_F/F`` invariant, exactly as the
       magnitude path leaves ``sigma_mag`` unchanged.
 
     Both spaces relabel the object id (``synth_objid``: ``..._ml_<t0>_<tE>_<u0>``)
@@ -289,7 +289,7 @@ def ml_f(*x):
 def ml_f_flux(*x):
     # Flux-space PSPL model: fractional flux s = F_obs/F_base - 1.
     # microlensing_amplification already returns the (blended) flux ratio
-    # F_obs/F_base, so this is just that minus 1 -- no amp_to_mag, no magnitude
+    # F_obs/F_base, so this is just that minus 1, no amp_to_mag, no magnitude
     # sign flip. (Pair with jac=None: ml_jac is the magnitude Jacobian.)
     return microlensing_amplification(*x) - 1.0
 
@@ -529,7 +529,7 @@ def weighted_avg_and_std(values, weights):
     They weights are in effect first normalized so that they 
     sum to 1 (and so they must not all be 0).
 
-    values, weights -- NumPy ndarrays with the same shape.
+    values, weights, NumPy ndarrays with the same shape.
     """
     average = np.average(values, weights=weights)
     # Fast and numerically precise:
@@ -871,7 +871,7 @@ def make_fit_excursions_df(fitresults):
 
 def detect(df, schema=NSC_SCHEMA, *, restrict_well_sampled=True, rng=None, **params):
     """High-level, in-memory microlensing detection: a raw survey table in, a
-    tidy table of fitted PSPL events out -- the convenience entry point.
+    tidy table of fitted PSPL events out, the convenience entry point.
 
     All in memory: ``normalize(df, schema)`` -> the canonical detector frame
     (magnitude or fractional flux, per ``schema.space``) -> per-object

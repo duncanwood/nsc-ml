@@ -1,4 +1,4 @@
-# nscml -- audit
+# nscml: audit
 
 ## Verdict
 
@@ -6,8 +6,8 @@ The code is in good shape. It runs end to end on this machine, the science is
 sound, and the detection pipeline recovers injected PSPL events with sensible
 parameters (a fixture event injected at u0=0.05, tE=15d is recovered at
 u0=0.046, tE=14.9d; a degenerate fit is correctly flagged by the
-condition-number cut). The two `numba` weighted-moving-average kernels -- the
-scientific core -- agree with an independent dense implementation to machine
+condition-number cut). The two `numba` weighted-moving-average kernels, the
+scientific core, agree with an independent dense implementation to machine
 epsilon, and `ks_weighted` reproduces `scipy.stats.ks_2samp`'s D statistic
 exactly. Output is bit-for-bit reproducible across runs.
 
@@ -16,33 +16,33 @@ almost all "would make this a cleaner reusable library," not "this is wrong."
 The one genuine defect is a small cluster of unfinished `fit_stats*` stubs
 that are not on any live path.
 
-## Resolution (implemented 2026-06-02, branch refactor/nscml-proposals)
+## Resolution (implemented 2026-06-02)
 
-The proposals were approved and implemented on top of the audit branch. The
-parity suite stayed green throughout, except one deliberate, isolated
-re-capture (the small-sample KS reference, finding 1). Status per finding:
+I implemented the proposals. The parity suite stayed green throughout, except
+one deliberate, isolated re-capture (the small-sample KS reference, finding 1).
+Status per finding:
 
 | # | finding | status |
 |---|---|---|
-| 1 | inject a numpy Generator (RNG) | done -- `fit_excursions`/`generate_synthetic` take `rng=`; `import random` dropped; only `pipeline_small.json` (pval) re-captured |
-| 2 | star imports | done -- explicit `__all__` in nsctools.py and plot.py (0 import names leak) |
-| 3 | name magic numbers | done -- constants block; `get_default_args` values unchanged |
-| 4 | path construction | done -- `os.path.join`/`dirname`/`basename` throughout |
-| 5 | unfinished `fit_stats*` stubs | done -- removed (unused) |
-| 6a | empty-lightcurve guard | done -- returns `[]` |
+| 1 | inject a numpy Generator (RNG) | done, `fit_excursions`/`generate_synthetic` take `rng=`; `import random` dropped; only `pipeline_small.json` (pval) re-captured |
+| 2 | star imports | done, explicit `__all__` in nsctools.py and plot.py (0 import names leak) |
+| 3 | name magic numbers | done, constants block; `get_default_args` values unchanged |
+| 4 | path construction | done, `os.path.join`/`dirname`/`basename` throughout |
+| 5 | unfinished `fit_stats*` stubs | done, removed (unused) |
+| 6a | empty-lightcurve guard | done, returns `[]` |
 | 6b | `'ml'` -> `'_ml_'` in `split_real_synth_df` | done |
-| 6c | `consolidate` raise on mismatch | done -- raises `ValueError` |
+| 6c | `consolidate` raise on mismatch | done, raises `ValueError` |
 | 6d | curve_fit `u0` lower bound = 0 | **kept as-is** (see note) |
-| 7 | near-duplicate functions | partial -- `weighted_moving_average_gaussian` and `dense_sparse_gaussian_window` now delegate; the `get_*well_sampled_objects` pair kept (differ by `observed=`/empty-filter, used by notebooks) |
-| 8 | `pyproject.toml` | done -- replaces `setup.py`; egg-info untracked |
+| 7 | near-duplicate functions | partial, `weighted_moving_average_gaussian` and `dense_sparse_gaussian_window` now delegate; the `get_*well_sampled_objects` pair kept (differ by `observed=`/empty-filter, used by notebooks) |
+| 8 | `pyproject.toml` | done, replaces `setup.py`; egg-info untracked |
 
 Why 6d was kept: the current design lets a degenerate fit rail to `u0 ~ 0`,
 which yields an enormous covariance condition number that `cut_pcov` reliably
 removes. A small positive lower bound would instead rail degenerate fits to
 that floor, where the condition number can fall *below* `cond_lim` and slip
-through the cut -- turning a clean reject into a possible false positive. The
+through the cut, turning a clean reject into a possible false positive. The
 rail-to-zero + condition-number cut is the intended degeneracy filter, so it
-was left unchanged. (Happy to revisit empirically if wanted.)
+was left unchanged.
 
 Fixed (2026-06-02 follow-up): `fit_excursions` took a `context_size` parameter
 but called `extend_lc(df, region)` without passing it, so the fit window was
@@ -51,10 +51,10 @@ always the 100-day default and the argument was dead. Now wired through
 goldens and parity are unaffected; a regression test confirms a larger
 `context_size` pulls more epochs into the fit.
 
-## What was changed in this branch
+## What I changed
 
 Only deletions of dead/commented code, sparse research comments, and trailing-
-whitespace fixes -- no logic, no renames, no restructuring. Specifically:
+whitespace fixes, no logic, no renames, no restructuring. Specifically:
 
 - `nsctools.py`: removed the commented-out duplicate `ml_jac`, disabled debug
   `print`s, the dead `cut_mask` / achromatic / revisit blocks, stale inline
@@ -68,13 +68,9 @@ whitespace fixes -- no logic, no renames, no restructuring. Specifically:
 A parity test suite captured from the pre-cleanup code stays green across
 every cleanup commit, so these edits are verified behaviour-preserving.
 
-The branch's first commit snapshots pre-existing uncommitted working-tree
-changes to `plot.py` and the egg-info `SOURCES.txt` that were present before
-this audit; they are not part of the cleanup.
+## Findings
 
-## Findings (proposals, not applied)
-
-### 1. Reproducibility / RNG -- inject a Generator (highest value)
+### 1. Reproducibility / RNG: inject a Generator (highest value)
 
 Two functions draw random numbers from process-global state, and they do it
 two different ways:
@@ -85,7 +81,7 @@ two different ways:
   by `np.random.seed(...)`, so this path cannot be reproduced by seeding the
   legacy global RNG at all. (The test harness reproduces it only by
   monkeypatching `np.random.default_rng` to a seeded factory *and* calling
-  `random.seed` -- see `tests/fixture_build.py:seeded_synth_rng`.)
+  `random.seed`, see `tests/fixture_build.py:seeded_synth_rng`.)
 - `fit_excursions` uses `np.random.normal(0, res_std, n_ks_gaussian)` for the
   small-sample KS reference. This *is* reproducible via `np.random.seed`.
 
@@ -112,10 +108,10 @@ leaking. This is also what makes the package safe to `import *` from notebooks.
 
 Defaults are scattered and sometimes inconsistent between callers:
 
-- `cond_lim = 1e5` (`cut_pcov`) -- the fit-degeneracy threshold.
-- `timescale` -- the WMA smoothing scale in days: default `2` in the kernels
+- `cond_lim = 1e5` (`cut_pcov`), the fit-degeneracy threshold.
+- `timescale`, the WMA smoothing scale in days: default `2` in the kernels
   but `5` in `find_persistent_excursions`.
-- `nclip` -- window truncation in units of timescale: `10` in the sparse
+- `nclip`, window truncation in units of timescale: `10` in the sparse
   kernels, `5` in `clipped_gaussian_window`, `1` in
   `weighted_moving_average_sparse_gaussian`.
 - detection gates: `z_threshold=3`, `n_measured=4`, `duration=5`.
@@ -132,11 +128,11 @@ defaults so the same physical scale is not spelled two ways.
 ### 4. Hardcoded / fragile output paths
 
 - `search_files_for_excursions` defaults `outdir` to
-  `'/'.join(lcfiles[0].split('/')[:-1]) + '/searches/'` -- a hardcoded
+  `'/'.join(lcfiles[0].split('/')[:-1]) + '/searches/'`, a hardcoded
   `/searches/` suffix and POSIX-only path splitting.
 - Path strings are built by concatenation, **inconsistently**:
   `consolidate_search_files_for_excursions` writes
-  `metadata['outdir'] + metadata['outfile']` (no separator -- silently writes
+  `metadata['outdir'] + metadata['outfile']` (no separator, silently writes
   to the wrong place unless `outdir` ends in `/`), while `fit_excursions`
   writes `metadata['outdir'] + '/' + metadata['fitoutfile']`. The test suite
   has to pass a trailing-slash `outdir` to work around this.
@@ -151,7 +147,7 @@ input file.
 incomplete and not called by any pipeline function:
 
 - `fit_stats(full_fit_results)` recurses as `fit_stats(rfitdf)`, passing a
-  DataFrame where a `(fitresults, fitfails, fitdups)` tuple is expected -- the
+  DataFrame where a `(fitresults, fitfails, fitdups)` tuple is expected, the
   unpack raises `ValueError` whenever both real and synthetic rows are present.
   The function also has no `return` (returns `None`) and appears truncated.
 - `fit_stats_df` repeats `info.update({'n_excursions': df.shape[0]})` twice (a
@@ -225,7 +221,7 @@ Pinned in `requirements.txt`, validated against conda env `nsc` (CPython
   drift, while the pure-numba kernels are asserted bit-exact.
 - **scikit-learn** is intentionally absent: it was used only by the removed
   `__deprecated.py` KDE time-segmentation, not by the detection pipeline.
-- I/O uses **pickle** for intermediate search/fit results -- convenient but
+- I/O uses **pickle** for intermediate search/fit results, convenient but
   version-fragile and unsafe on untrusted input; fine for a single-user
   research workflow.
 
@@ -236,7 +232,7 @@ Verified import-dead before removal: not imported by `__init__.py`,
 references are stale cProfile output that predates the refactor, locally
 redefined `get_lc`, or `nsctools.segment_times(...)` calls that already fail
 against the current module because those functions were moved out). It held
-parked-but-real functionality -- KDE-based time segmentation, the
+parked-but-real functionality, KDE-based time segmentation, the
 achromaticity discriminant (`is_achromatic` / `points_compatible`), and a
 weighted-moving-average skewness. It is recoverable from git history; if any of
 it is wanted as a reference artifact, `git revert` of the removal restores it.

@@ -10,7 +10,7 @@ jobs:
   test:
     # The parity goldens are captured on Apple Silicon (arm64/Darwin) and the
     # numba kernels + seeded paths are asserted bit-exact (only the BLAS-backed
-    # fit pipeline gets a cross-platform tolerance -- see tests/conftest.py), so
+    # fit pipeline gets a cross-platform tolerance, see tests/conftest.py), so
     # CI runs on the matching arch. The pinned requirements install the same
     # wheels as the validated dev env (conda "nsc", CPython 3.11.9).
     runs-on: macos-latest          # macos-14+ runners are arm64
