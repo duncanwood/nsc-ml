@@ -6,10 +6,13 @@ pull photometry out of a data release with the **Butler** (or **TAP**), and run
 model shifts slightly between releases, so confirm column names against the
 release you actually use and override the schema accordingly.
 
-> **Status:** this is a deployment recipe, not yet an end-to-end validated run.
-> No Rubin data lives on the dev machine, so the steps below are assembled from
-> the public DP0.2 / DP1 documentation (sources at the bottom). The last mile,
-> running it in an RSP notebook against real tables, is the open task.
+> **Status:** the deployment recipe below is assembled from the public DP0.2 / DP1
+> documentation (sources at the bottom); the actual end-to-end run on real tables is
+> the open task, gated only on data-rights access. There are two ways to run it: in
+> an **RSP notebook** (this guide), or **locally over the TAP API** with a user token
+> (see [Run it locally over the API](#run-it-locally-over-the-api) below) — the local
+> route runs detection in the env nscml was validated against, so the numpy-2.x
+> caveat doesn't apply there.
 
 ## TL;DR
 
@@ -178,6 +181,91 @@ end-to-end on synthetic LSST-shaped data (runs locally, no RSP needed), and
 **[`examples/rsp_dp1_search.py`](examples/rsp_dp1_search.py)** for a ready-to-paste
 DP1 notebook: TAP-select variable `DiaObject`s, pull their `ForcedSourceOnDiaObject`
 light curves (joined to `Visit` for the time), and run `detect()` over real data.
+
+## Run it locally over the API
+
+The RSP TAP service is reachable from outside the platform with a user token, so I
+don't actually need a notebook on the RSP to run a search this size. I pull the DP1
+light curves over the network and run `detect()` here — which has the bonus that
+detection happens in the environment nscml was validated against (numpy 1.23.5),
+instead of the stack's numpy 2.x. The only thing that goes remote is the catalog
+query; the detector never touches the stack, so the numpy caveat in §5 doesn't apply.
+
+**1. Make a token.** DP1's documented home is the IDF: log into
+<https://data.lsst.cloud/> → user menu → **Security tokens** → **Create token**, scope
+**`read:tap`** (add `read:image` only if you also want cutouts). It's shown once; treat
+it like a password. The USDF deployment (<https://usdf-rsp.slac.stanford.edu/>) exposes
+the same TAP API at `https://usdf-rsp.slac.stanford.edu/api/tap`; make the token on
+whichever deployment your data rights live on and point at that one.
+
+**2. Wire pyvo to it.** A token in a bearer header is the whole of it:
+
+```python
+import os, requests, pyvo
+
+session = requests.Session()
+session.headers["Authorization"] = f"Bearer {os.environ['RSP_TOKEN']}"
+service = pyvo.dal.TAPService("https://data.lsst.cloud/api/tap", session=session)
+
+df = service.search("""
+    SELECT fsodo.diaObjectId, fsodo.band, vis.expMidptMJD,
+           fsodo.psfFlux, fsodo.psfFluxErr
+    FROM   dp1.ForcedSourceOnDiaObject AS fsodo
+    JOIN   dp1.Visit AS vis ON vis.visit = fsodo.visit
+    WHERE  fsodo.diaObjectId = <id>
+""").to_table().to_pandas()
+```
+
+The query and the `detect()` call are otherwise identical to the notebook in §3–4.
+
+**3. Run it.** [`examples/dp1_search_local.py`](examples/dp1_search_local.py) is the
+notebook from `rsp_dp1_search.py` rebuilt for this path: it reads `RSP_TOKEN` (and an
+optional `RSP_TAP_URL` to switch to the USDF), pulls the same DP1 tables, runs the
+direct- and difference-flux searches, and writes candidates + a top-candidate plot to
+`examples/results/`. Run it in any env with `nscml` + `pyvo` (the `nsc` env has both):
+
+```bash
+export RSP_TOKEN='gt-...'
+python examples/dp1_search_local.py
+```
+
+**Local vs. on-platform.** For a search this size (a few hundred objects, a few
+thousand epochs) the pull is seconds and local detection in the validated env is the
+simpler, lower-risk route. The platform wins when the work is large or image-heavy — a
+survey-scale sweep (10⁵–10⁶ objects) or anything that needs the Butler and coadds,
+where co-located compute and no egress matter. Both routes hit the same catalogs; pick
+by data volume.
+
+## The repos, and the full unbiased search
+
+**For the search you only need this repo (nsc-ml).** The detector runs on real DP1
+photometry with nothing else. The sibling repos are a separate, optional workflow —
+the *rate / efficiency* side:
+
+- **nsc-ml** (this repo) — the detector. Install per §2.
+- **rubin-sim-ml** — analytic microlensing event-rate MC + a detection-efficiency
+  metric. Needed only to interpret a search's yield, not to run it. Its README covers
+  install; it depends on a fork of LensCalcPy:
+  `pip install "git+https://github.com/duncanwood/LensCalcPy.git"` (numpy is pinned
+  `<2` there, so keep it in its own env).
+
+**Run the full unbiased DP1 search** (point sources, not the variable-biased shakedown):
+[`examples/dp1_search_unbiased.py`](examples/dp1_search_unbiased.py) selects stars
+(`dp1.Object refExtendedness<0.5`) and pulls their `dp1.ForcedSource` light curves in
+chunks, detecting as it goes and keeping only candidates. DP1 has ~378k such point
+sources (~0.3 GB of light curves) — laptop-sized, so it runs locally:
+
+```bash
+export RSP_TOKEN=$(security find-generic-password -s rsp-usdf-tap -w)
+export RSP_TAP_URL='https://usdf-rsp.slac.stanford.edu/api/tap'
+N_STARS=400000 CHUNK=2000 python examples/dp1_search_unbiased.py
+```
+
+The same command runs in an RSP/USDF terminal against the local TAP service (faster, no
+egress) — use the pinned-env install (§2 option B) there, since the stack is numpy 2.x.
+A statistically expected detection needs ~1e6 well-monitored sources over a long
+baseline (optical depth ~1e-6); that is LSST WFD, not DP1's 32-day ComCam — so the DP1
+run proves the pipeline at survey scale and probes the short-tE regime.
 
 ## 5. Caveats and the open last mile
 

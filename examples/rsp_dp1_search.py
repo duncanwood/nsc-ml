@@ -18,13 +18,15 @@ Caveats for this first run (engineering shakedown, not a science result):
 """
 
 # %% 1. setup -------------------------------------------------------------------
+from dataclasses import replace
 from lsst.rsp import get_tap_service        # newer RSP; older images: get_tap_service()
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 import nscml
-from nscml.surveys.lsst import from_lsst
+from nscml.surveys.lsst import (from_lsst, LSST_FORCEDSOURCE_SCHEMA,
+                                LSST_DIASOURCE_SCHEMA)
 
 service = get_tap_service("tap")
 
@@ -62,10 +64,10 @@ print(f"{len(lc)} forced-source epochs across {lc.diaObjectId.nunique()} objects
 
 # %% 4. detect, direct flux ---------------------------------------------------
 # psfFlux is total flux, so its per-band median is a valid F_ref; detect()
-# normalizes to fractional flux and runs the flux detector in one call.
-direct_schema = nscml.LightcurveSchema(
-    id="diaObjectId", time="expMidptMJD", band="band",
-    measurement="psfFlux", error="psfFluxErr", space="flux")
+# normalizes to fractional flux and runs the flux detector in one call. Reuse the
+# survey's tested ForcedSource schema (value=None + space='flux'); only the id
+# column differs for ForcedSourceOnDiaObject.
+direct_schema = replace(LSST_FORCEDSOURCE_SCHEMA, id="diaObjectId")
 cand = nscml.detect(lc, schema=direct_schema, restrict_well_sampled=False)
 cand = cand.sort_values("pval").reset_index(drop=True)
 print(f"{len(cand)} PSPL candidates (direct flux)")
@@ -73,13 +75,16 @@ cand.head(15)
 
 # %% 5. detect, difference flux (optional; more sensitive on bright hosts) ----
 # Difference flux has a per-band median ~0, so fold in the DiaObject mean as F_ref.
-band_mean = {b: f"{b}_psfFluxMean" for b in "ugrizy"}
-lc["template"] = lc.apply(lambda r: r[band_mean[r["band"]]], axis=1)
-lc_pos = lc[lc["template"] > 0]             # need a positive reference flux
-diff_schema = nscml.LightcurveSchema(
-    id="diaObjectId", time="expMidptMJD", band="band",
-    measurement="psfDiffFlux", error="psfDiffFluxErr", space="flux")
-canonical = from_lsst(lc_pos, diff_schema, template_flux_col="template")
+# Keep only (object, band) groups whose science flux (psfDiffFlux + template) has a
+# positive per-band median -- a non-positive median can't be normalized to
+# fractional flux (real DP1 difference photometry has some of these).
+lc["template"] = lc.apply(lambda r: r[f"{r['band']}_psfFluxMean"], axis=1)
+lc["F_sci"] = lc["psfDiffFlux"] + lc["template"]
+med = lc.groupby(["diaObjectId", "band"], observed=True)["F_sci"].transform("median")
+lc_ok = lc[med > 0].copy()
+diff_schema = replace(LSST_DIASOURCE_SCHEMA, time="expMidptMJD",
+                      measurement="psfDiffFlux", error="psfDiffFluxErr")
+canonical = from_lsst(lc_ok, diff_schema, template_flux_col="template")
 cand_diff = nscml.detect(
     canonical,
     schema=nscml.LightcurveSchema(value="deltamag", error="magerr_auto",
