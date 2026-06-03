@@ -5,11 +5,11 @@ flux-space detector, and ranks PSPL candidates. Cells are marked with `# %%` so
 this runs top-to-bottom as a script or pastes cell-by-cell into a Jupyter notebook.
 
 REQUIRES the Rubin Science Platform: `lsst.rsp` / the TAP service, and DP1 data
-rights. It does NOT run locally (no Rubin data here) -- see RUNNING_ON_RSP.md.
+rights. It does NOT run locally (no Rubin data here), see RUNNING_ON_RSP.md.
 
 Caveats for this first run (engineering shakedown, not a science result):
 - DP1 is ComCam: ~7 fields, short time baseline. Expect variable stars / artifacts,
-  not real microlensing -- the point is to prove the pipeline on real photometry.
+  not real microlensing, the point is to prove the pipeline on real photometry.
 - The detector's well-sampled-region gate (WS_INTERVAL_DAYS=50) is an NSC default
   and is almost certainly longer than ComCam's per-field baseline, so we pass
   restrict_well_sampled=False here (search the whole light curve). Tuning the
@@ -31,7 +31,7 @@ service = get_tap_service("tap")
 # %% 2. select variable DiaObjects to search -----------------------------------
 # nDiaSources = number of difference-image detections; >10 picks objects that
 # actually varied (and so have epochs worth searching). This biases toward
-# variables -- fine for a shakedown; for an unbiased search, select by sky region
+# variables, fine for a shakedown; for an unbiased search, select by sky region
 # or by forced-source epoch count instead.
 N_OBJECTS = 200
 targets = service.search(f"""
@@ -60,7 +60,7 @@ lc = service.search(f"""
 """).to_table().to_pandas()
 print(f"{len(lc)} forced-source epochs across {lc.diaObjectId.nunique()} objects")
 
-# %% 4. detect -- direct flux ---------------------------------------------------
+# %% 4. detect, direct flux ---------------------------------------------------
 # psfFlux is total flux, so its per-band median is a valid F_ref; detect()
 # normalizes to fractional flux and runs the flux detector in one call.
 direct_schema = nscml.LightcurveSchema(
@@ -71,7 +71,7 @@ cand = cand.sort_values("pval").reset_index(drop=True)
 print(f"{len(cand)} PSPL candidates (direct flux)")
 cand.head(15)
 
-# %% 5. detect -- difference flux (optional; more sensitive on bright hosts) ----
+# %% 5. detect, difference flux (optional; more sensitive on bright hosts) ----
 # Difference flux has a per-band median ~0, so fold in the DiaObject mean as F_ref.
 band_mean = {b: f"{b}_psfFluxMean" for b in "ugrizy"}
 lc["template"] = lc.apply(lambda r: r[band_mean[r["band"]]], axis=1)
