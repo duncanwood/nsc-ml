@@ -10,5 +10,3 @@ HANDOFF.md
 # local scratch (not part of the published repo)
 notebooks/
 *.png
-# run outputs from examples/dp1_search_local.py (data, not code)
-examples/results/
