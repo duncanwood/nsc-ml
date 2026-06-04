@@ -30,8 +30,8 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements-dev.txt
 
-      - name: Install nscml (editable; compat mode for the nested nscml/nscml package)
-        run: pip install -e nscml --config-settings editable_mode=compat
+      - name: Install swellar (editable)
+        run: pip install -e .
 
       - name: Run tests
         run: python -m pytest

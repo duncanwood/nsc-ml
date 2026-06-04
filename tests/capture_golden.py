@@ -1,4 +1,4 @@
-"""Capture golden outputs from the CURRENT nscml code.
+"""Capture golden outputs from the CURRENT swellar code.
 
 Run once before any source edits; the goldens are committed and the parity
 tests assert the (cleaned) library still reproduces them. Re-running after a
@@ -13,7 +13,7 @@ import tempfile
 
 import numpy as np
 
-import nscml
+import swellar
 import fixture_build as fb
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -30,44 +30,44 @@ def capture_kernels():
     out = {}
 
     # windowed weighted moving average / scatter (the scientific core)
-    wma, wme, wms = nscml.sparse_gaussian_wma(y, t, w, timescale=5.0, nclip=10)
+    wma, wme, wms = swellar.sparse_gaussian_wma(y, t, w, timescale=5.0, nclip=10)
     out['sgw_wma'], out['sgw_wme'], out['sgw_wms'] = wma, wme, wms
-    out['sgwms_direct'] = nscml.sparse_gaussian_wms(y, t, w, wma, timescale=5.0, nclip=10)
+    out['sgwms_direct'] = swellar.sparse_gaussian_wms(y, t, w, wma, timescale=5.0, nclip=10)
     out['dense_window'] = np.asarray(
-        nscml.dense_sparse_gaussian_window(t, timescale=5.0, nclip=10))
+        swellar.dense_sparse_gaussian_window(t, timescale=5.0, nclip=10))
 
-    cwma, cerr, cscat = nscml.compute_weighted_moving_average(y, t, errs, timescale=5.0)
+    cwma, cerr, cscat = swellar.compute_weighted_moving_average(y, t, errs, timescale=5.0)
     out['cwma_wma'], out['cwma_err'], out['cwma_scatter'] = cwma, cerr, cscat
-    gwma, gerr, gscat = nscml.weighted_moving_average_gaussian(y, t, errs, timescale=5.0)
+    gwma, gerr, gscat = swellar.weighted_moving_average_gaussian(y, t, errs, timescale=5.0)
     out['gauss_wma'], out['gauss_err'], out['gauss_scatter'] = gwma, gerr, gscat
 
-    sp_wma, sp_err, sp_scat = nscml.weighted_moving_average(
+    sp_wma, sp_err, sp_scat = swellar.weighted_moving_average(
         y, t, errs, sparse=True, timescale=5.0, nclip=10)
     out['disp_sparse_wma'] = sp_wma
-    de_wma, de_err, de_scat = nscml.weighted_moving_average(
+    de_wma, de_err, de_scat = swellar.weighted_moving_average(
         y, t, errs, sparse=False, timescale=5.0)
     out['disp_dense_wma'] = de_wma
 
-    windows = nscml.gaussian_window(t.reshape(-1, 1) - t.reshape(1, -1), 5.0)
+    windows = swellar.gaussian_window(t.reshape(-1, 1) - t.reshape(1, -1), 5.0)
     out['gaussian_window'] = windows
-    out['wma_err_direct'] = nscml.weighted_moving_average_err(w, windows)
-    out['wma_scatter_direct'] = nscml.weighted_moving_average_scatter(y, cwma, w, windows)
+    out['wma_err_direct'] = swellar.weighted_moving_average_err(w, windows)
+    out['wma_scatter_direct'] = swellar.weighted_moving_average_scatter(y, cwma, w, windows)
     dts = np.array([-30.0, -7.0, -2.0, 0.0, 1.5, 6.0, 11.0, 26.0])
     out['clipped_window'] = np.array(
-        [nscml.clipped_gaussian_window(d, 2.0, 5) for d in dts])
+        [swellar.clipped_gaussian_window(d, 2.0, 5) for d in dts])
 
-    avg, std = nscml.weighted_avg_and_std(y, w)
+    avg, std = swellar.weighted_avg_and_std(y, w)
     out['wavg'] = np.array([avg, std])
 
     # PSPL amplification / model / Jacobian
     ai = fb.amplification_inputs()
     at, u0, tE, t0, blend = ai['t'], ai['u0'], ai['tE'], ai['t0'], ai['blend']
-    amp = nscml.microlensing_amplification(at, u0, tE, t0)
+    amp = swellar.microlensing_amplification(at, u0, tE, t0)
     out['amp'] = amp
-    out['amp_blend'] = nscml.microlensing_amplification(at, u0, tE, t0, blend)
-    out['amp_to_mag'] = nscml.amp_to_mag(amp)
-    out['ml_f'] = nscml.ml_f(at, u0, tE, t0)
-    out['ml_jac'] = nscml.ml_jac(at, u0, tE, t0)
+    out['amp_blend'] = swellar.microlensing_amplification(at, u0, tE, t0, blend)
+    out['amp_to_mag'] = swellar.amp_to_mag(amp)
+    out['ml_f'] = swellar.ml_f(at, u0, tE, t0)
+    out['ml_jac'] = swellar.ml_jac(at, u0, tE, t0)
 
     np.savez(os.path.join(GOLDEN, 'kernels.npz'), **out)
     print('wrote kernels.npz with', len(out), 'arrays')
@@ -75,8 +75,8 @@ def capture_kernels():
 
 def capture_ks():
     k = fb.ks_inputs()
-    dw, pw = nscml.ks_weighted(k['a'], k['b'], k['wa'], k['wb'])
-    de, pe = nscml.ks_weighted(k['a'], k['b'], np.ones_like(k['a']), np.ones_like(k['b']))
+    dw, pw = swellar.ks_weighted(k['a'], k['b'], k['wa'], k['wb'])
+    de, pe = swellar.ks_weighted(k['a'], k['b'], np.ones_like(k['a']), np.ones_like(k['b']))
     payload = {'weighted': [_f(dw), _f(pw)], 'equal': [_f(de), _f(pe)]}
     with open(os.path.join(GOLDEN, 'ks.json'), 'w') as f:
         json.dump(payload, f, indent=2)
@@ -103,7 +103,7 @@ def _df_records(fitdf):
 
 def capture_pipeline():
     real_path = os.path.join(HERE, 'fixtures', 'real_objects.parquet')
-    tmp = tempfile.mkdtemp(prefix='nscml_golden_')
+    tmp = tempfile.mkdtemp(prefix='swellar_golden_')
     info = fb.build_working_fixtures(real_path, tmp)
     with open(info['ws_regions'], 'rb') as f:
         ws_regions = pickle.load(f)
@@ -114,17 +114,17 @@ def capture_pipeline():
     rb = pd.read_parquet(info['mini_lc'])
     sid = info['synth_ids'][0]
     lc = rb[rb['objectid'].astype(str) == sid]
-    direct = nscml.find_persistent_excursions(lc)
+    direct = swellar.find_persistent_excursions(lc)
     direct_regions = [[int(i) for i in r] for r in direct]
 
     meta = {'outdir': tmp, 'outfile': 'search.pickle', 'fitoutfile': 'fits.pickle'}
-    _, _, excursions = nscml.search_files_for_excursions(
+    _, _, excursions = swellar.search_files_for_excursions(
         lcfiles, ws_regions, dict(meta), {})
     exc_ser = {str(k): [[int(i) for i in r] for r in v] for k, v in excursions.items()}
 
-    fitresults, fitfails, fitdups = nscml.fit_excursions(
+    fitresults, fitfails, fitdups = swellar.fit_excursions(
         excursions, lcfiles, dict(meta), {}, rng=np.random.default_rng(0))
-    fitdf = nscml.make_fit_excursions_df(fitresults)
+    fitdf = swellar.make_fit_excursions_df(fitresults)
 
     payload = {
         'direct_excursions': {sid: direct_regions},
@@ -141,15 +141,15 @@ def capture_pipeline():
 
 
 def capture_pipeline_small():
-    tmp = tempfile.mkdtemp(prefix='nscml_small_')
+    tmp = tempfile.mkdtemp(prefix='swellar_small_')
     lc = fb.small_sample_lc()
     p = os.path.join(tmp, 'small.parquet')
     lc.to_parquet(p)
-    excs = {'small_0': nscml.find_persistent_excursions(lc)}
+    excs = {'small_0': swellar.find_persistent_excursions(lc)}
     meta = {'outdir': tmp, 'outfile': 'search.pickle', 'fitoutfile': 'fits.pickle'}
-    fitresults, fitfails, fitdups = nscml.fit_excursions(
+    fitresults, fitfails, fitdups = swellar.fit_excursions(
         excs, [p], dict(meta), {}, rng=np.random.default_rng(0))
-    fitdf = nscml.make_fit_excursions_df(fitresults)
+    fitdf = swellar.make_fit_excursions_df(fitresults)
     # guard against a vacuous golden: the branch under test must be reached
     assert len(fitdf) > 0 and not fitdf['two_sample'].any(), (
         'small-sample fixture did not exercise the np.random.normal branch')
@@ -166,7 +166,7 @@ def capture_pipeline_small():
 
 def capture_synth():
     real_path = os.path.join(HERE, 'fixtures', 'real_objects.parquet')
-    tmp = tempfile.mkdtemp(prefix='nscml_synth_')
+    tmp = tempfile.mkdtemp(prefix='swellar_synth_')
     events = fb.events_table()
     # ws_regions keyed by real id, from the same lcfile we pass in
     import pandas as pd
@@ -175,7 +175,7 @@ def capture_synth():
     ws_regions = {rid: fb._well_sampled(rb[rb['objectid'] == rid])
                   for rid in fb.REAL_OBJECT_IDS}
 
-    nscml.generate_synthetic_microlensing_events_from_population(
+    swellar.generate_synthetic_microlensing_events_from_population(
         [real_path], events, ws_regions, tmp, 'gold', rng=np.random.default_rng(0))
     info_pkl = os.path.join(tmp, 'synth-gold', 'synth-gold-info.pickle')
     with open(info_pkl, 'rb') as f:

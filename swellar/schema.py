@@ -1,4 +1,4 @@
-"""Survey-agnostic light-curve schema for the nscml detector.
+"""Survey-agnostic light-curve schema for the swellar detector.
 
 The detector reads four canonical per-epoch columns and groups by object:
 

@@ -27,8 +27,8 @@ os.environ.setdefault('TQDM_DISABLE', '1')   # quiet the pipeline's progress bar
 import numpy as np
 import pandas as pd
 
-import nscml
-from nscml.surveys.lsst import (from_lsst, LSST_FORCEDSOURCE_SCHEMA,
+import swellar
+from swellar.surveys.lsst import (from_lsst, LSST_FORCEDSOURCE_SCHEMA,
                                 LSST_DIASOURCE_SCHEMA)
 
 # Injected event (the ground truth we try to recover).
@@ -49,7 +49,7 @@ def synthetic_forcedsource(rng):
         # dense, slightly jittered cadence -> one well-sampled region per band
         t = np.sort(np.arange(0.0, SPAN, CADENCE) + rng.uniform(-0.4, 0.4,
                     size=int(SPAN // CADENCE)))
-        amp = nscml.microlensing_amplification(t, U0, TE, T0)   # achromatic flux ratio A(t)
+        amp = swellar.microlensing_amplification(t, U0, TE, T0)   # achromatic flux ratio A(t)
         sigma = f_base / SNR
         flux = f_base * amp + rng.normal(0, sigma, size=t.size)
         rows.append(pd.DataFrame({'objectId': 'LSST-0001', 'expMidptMJD': t,
@@ -75,7 +75,7 @@ def to_diasource(forced):
 # The canonical frame from from_lsst already carries the fractional-flux signal
 # `s` in `deltamag`, so detect() runs with a "signal present" flux schema
 # (normalize is then just a rename, no re-baselining).
-SIGNAL_SCHEMA = nscml.LightcurveSchema(value='deltamag', error='magerr_auto',
+SIGNAL_SCHEMA = swellar.LightcurveSchema(value='deltamag', error='magerr_auto',
                                        band='filter', space='flux')
 
 
@@ -96,13 +96,13 @@ def main():
           f"{forced['band'].nunique()} bands; injected u0={U0}, tE={TE} d, t0={T0} d.\n")
 
     # 1) ForcedSource (direct flux) -> detect() normalizes + detects in one call.
-    forced_fits = nscml.detect(forced, schema=LSST_FORCEDSOURCE_SCHEMA, rng=rng)
+    forced_fits = swellar.detect(forced, schema=LSST_FORCEDSOURCE_SCHEMA, rng=rng)
     _report("ForcedSource (detect, direct flux)", forced_fits)
 
     # 2) DiaSource (difference flux) -> from_lsst folds in the template, then detect.
     canonical = from_lsst(to_diasource(forced), schema=LSST_DIASOURCE_SCHEMA,
                           template_flux_col='template')
-    dia_fits = nscml.detect(canonical, schema=SIGNAL_SCHEMA, rng=rng)
+    dia_fits = swellar.detect(canonical, schema=SIGNAL_SCHEMA, rng=rng)
     _report("DiaSource  (from_lsst + detect)    ", dia_fits)
 
     return forced_fits

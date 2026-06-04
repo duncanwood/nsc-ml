@@ -1,4 +1,4 @@
-# Running nsc-ml on the Rubin Science Platform (RSP)
+# Running swellar on the Rubin Science Platform (RSP)
 
 How to drop this detector onto the [Rubin Science Platform](https://rsp.lsst.io/),
 pull photometry out of a data release with the **Butler** (or **TAP**), and run
@@ -11,19 +11,19 @@ release you actually use and override the schema accordingly.
 > the open task, gated only on data-rights access. There are two ways to run it: in
 > an **RSP notebook** (this guide), or **locally over the TAP API** with a user token
 > (see [Run it locally over the API](#run-it-locally-over-the-api) below) — the local
-> route runs detection in the env nscml was validated against, so the numpy-2.x
+> route runs detection in the env swellar was validated against, so the numpy-2.x
 > caveat doesn't apply there.
 
 ## TL;DR
 
 | Question | Answer |
 |---|---|
-| Python compatible? | **Yes.** The RSP stack is Science Pipelines **v29.2 / Python 3.12**; nscml needs `>=3.11`. |
+| Python compatible? | **Yes.** The RSP stack is Science Pipelines **v29.2 / Python 3.12**; swellar needs `>=3.11`. |
 | Which data? | **DP0.2** (simulated DC2) is the public sandbox; **DP1** (real, ComCam, released 2025-06-30) is **data-rights-gated** (US/Chile scientists + students qualify, you do). |
 | How to install? | `pip install --user` in an RSP terminal (no root; pip wraps conda over `rubin-env`). |
 | How to get light curves? | **TAP/ADQL** for per-object light curves (Qserv-backed, ergonomic); **Butler** for tract/patch table retrieval. |
-| Detector entry point | `nscml.detect(df, schema)` with a flux `LightcurveSchema` (`space='flux'`). |
-| Main caveat | nscml was validated on **numpy 1.23.5**; the stack is **numpy 2.x**, install *without* the pinned `requirements.txt` and run the test suite first. |
+| Detector entry point | `swellar.detect(df, schema)` with a flux `LightcurveSchema` (`space='flux'`). |
+| Main caveat | swellar was validated on **numpy 1.23.5**; the stack is **numpy 2.x**, install *without* the pinned `requirements.txt` and run the test suite first. |
 
 ## 1. Account and data access
 
@@ -37,7 +37,7 @@ request access through the RSP sign-up.
 Prototype on **DP0.2** first (it's public and free of NDA friction), then point
 the same code at DP1 by swapping the catalog namespace.
 
-## 2. Install nscml on the RSP
+## 2. Install swellar on the RSP
 
 Open a **Terminal** in the Notebook Aspect.
 
@@ -45,18 +45,17 @@ Open a **Terminal** in the Notebook Aspect.
 numpy/scipy/numba (i.e. *don't* pin), so you don't perturb `rubin-env`:
 
 ```bash
-pip install --user "git+https://github.com/duncanwood/nsc-ml.git#subdirectory=nscml"
+pip install --user "git+https://github.com/duncanwood/swellar.git"
 ```
 
-The package lives in the `nscml/` subdirectory of the repo (the `--subdirectory`
-is required). `--user` drops it in `~/.local/...`, visible from the LSST kernel.
+`--user` drops it in `~/.local/...`, visible from the LSST kernel.
 
-Then **validate before trusting it**, the stack is numpy 2.x and nscml's
+Then **validate before trusting it**, the stack is numpy 2.x and swellar's
 goldens were captured on numpy 1.23.5:
 
 ```bash
-git clone https://github.com/duncanwood/nsc-ml.git
-cd nsc-ml && python -m pytest        # expect 100 passing; investigate any numpy-2 breakage
+git clone https://github.com/duncanwood/swellar.git
+cd swellar && python -m pytest        # expect 100 passing; investigate any numpy-2 breakage
 ```
 
 > **Do not** `pip install --user -r requirements.txt`. Those pins (numpy==1.23.5,
@@ -68,14 +67,14 @@ cd nsc-ml && python -m pytest        # expect 100 passing; investigate any numpy
 build a dedicated env with the pinned deps and register it as a Jupyter kernel:
 
 ```bash
-conda create -y -n nscml python=3.11
-conda activate nscml
-pip install -r requirements-dev.txt && pip install -e nscml --config-settings editable_mode=compat
-python -m ipykernel install --user --name nscml --display-name "nscml (pinned)"
+conda create -y -n swellar python=3.11
+conda activate swellar
+pip install -r requirements-dev.txt && pip install -e .
+python -m ipykernel install --user --name swellar --display-name "swellar (pinned)"
 ```
 
 Then **access data in the stack kernel** (Butler/TAP live there), save the light
-curves to parquet, and **detect in the `nscml` kernel**, nscml's file pipeline
+curves to parquet, and **detect in the `swellar` kernel**, swellar's file pipeline
 already reads parquet, so the two kernels hand off cleanly through disk.
 
 ## 3. Pull a light curve
@@ -143,26 +142,26 @@ TAP is simpler. (Useful Butler catalog `datasetType`s: `objectTable`,
 
 ## 4. Run the detector
 
-The columns map straight onto a flux `LightcurveSchema`; nscml ships two starting
+The columns map straight onto a flux `LightcurveSchema`; swellar ships two starting
 points and `detect()` does the rest in memory:
 
 ```python
-import nscml
-from nscml.surveys.lsst import from_lsst, LSST_FORCEDSOURCE_SCHEMA, LSST_DIASOURCE_SCHEMA
+import swellar
+from swellar.surveys.lsst import from_lsst, LSST_FORCEDSOURCE_SCHEMA, LSST_DIASOURCE_SCHEMA
 
 # Direct flux (ForcedSource on Object): psfFlux is total flux; its per-band median
 # is a valid reference F_ref. One call -- detect normalizes to fractional flux
 # s = F/F_ref - 1 (achromatic, poolable across bands) and runs the flux detector.
-events = nscml.detect(df, schema=LSST_FORCEDSOURCE_SCHEMA)   # df has objectId, expMidptMJD, band, psfFlux, psfFluxErr
+events = swellar.detect(df, schema=LSST_FORCEDSOURCE_SCHEMA)   # df has objectId, expMidptMJD, band, psfFlux, psfFluxErr
 ```
 
 Adjust the schema to whatever columns you actually pulled, e.g. for
 `ForcedSourceOnDiaObject` with direct `psfFlux`, the id is `diaObjectId`:
 
 ```python
-schema = nscml.LightcurveSchema(id='diaObjectId', time='expMidptMJD', band='band',
+schema = swellar.LightcurveSchema(id='diaObjectId', time='expMidptMJD', band='band',
                                 measurement='psfFlux', error='psfFluxErr', space='flux')
-events = nscml.detect(df, schema=schema)
+events = swellar.detect(df, schema=schema)
 ```
 
 **Difference photometry** (`psfDiffFlux`, or any DiaSource difference flux) has a
@@ -172,7 +171,7 @@ flux first (the object's quiescent/coadd flux in that band) via `from_lsst`:
 ```python
 df['template'] = <per-epoch positive template flux, e.g. the coadd Object psfFlux in that band>
 canonical = from_lsst(df, LSST_DIASOURCE_SCHEMA, template_flux_col='template')  # F = diff + template
-events = nscml.detect(canonical, schema=nscml.LightcurveSchema(
+events = swellar.detect(canonical, schema=swellar.LightcurveSchema(
     value='deltamag', error='magerr_auto', band='filter', space='flux'))
 ```
 
@@ -187,7 +186,7 @@ light curves (joined to `Visit` for the time), and run `detect()` over real data
 The RSP TAP service is reachable from outside the platform with a user token, so I
 don't actually need a notebook on the RSP to run a search this size. I pull the DP1
 light curves over the network and run `detect()` here — which has the bonus that
-detection happens in the environment nscml was validated against (numpy 1.23.5),
+detection happens in the environment swellar was validated against (numpy 1.23.5),
 instead of the stack's numpy 2.x. The only thing that goes remote is the catalog
 query; the detector never touches the stack, so the numpy caveat in §5 doesn't apply.
 
@@ -222,7 +221,7 @@ The query and the `detect()` call are otherwise identical to the notebook in §3
 notebook from `rsp_dp1_search.py` rebuilt for this path: it reads `RSP_TOKEN` (and an
 optional `RSP_TAP_URL` to switch to the USDF), pulls the same DP1 tables, runs the
 direct- and difference-flux searches, and writes candidates + a top-candidate plot to
-`examples/results/`. Run it in any env with `nscml` + `pyvo` (the `nsc` env has both):
+`examples/results/`. Run it in any env with `swellar` + `pyvo` (the `nsc` env has both):
 
 ```bash
 export RSP_TOKEN='gt-...'
@@ -238,11 +237,11 @@ by data volume.
 
 ## The repos, and the full unbiased search
 
-**For the search you only need this repo (nsc-ml).** The detector runs on real DP1
+**For the search you only need this repo (swellar).** The detector runs on real DP1
 photometry with nothing else. The sibling repos are a separate, optional workflow —
 the *rate / efficiency* side:
 
-- **nsc-ml** (this repo) — the detector. Install per §2.
+- **swellar** (this repo) — the detector. Install per §2.
 - **rubin-sim-ml** — analytic microlensing event-rate MC + a detection-efficiency
   metric. Needed only to interpret a search's yield, not to run it. Its README covers
   install; it depends on a fork of LensCalcPy:
@@ -269,7 +268,7 @@ run proves the pipeline at survey scale and probes the short-tE regime.
 
 ## 5. Caveats and the open last mile
 
-- **numpy 1.x -> 2.x.** nscml's goldens were captured on numpy 1.23.5; the RSP
+- **numpy 1.x -> 2.x.** swellar's goldens were captured on numpy 1.23.5; the RSP
   stack is numpy 2.x. Run `python -m pytest` on the RSP before trusting results;
   fall back to the isolated kernel (option B) if anything breaks.
 - **Fractional flux, not raw flux.** Detection runs on `s = F/F_ref - 1`

@@ -1,4 +1,4 @@
-# nscml: code map
+# swellar: code map
 
 A multi-band time-series outlier-detection method for finding gravitational
 microlensing events in survey photometry (NOIRLab Source Catalog, NSC). The
@@ -15,9 +15,9 @@ average / scatter kernels, and the rest is a parquet-backed batch pipeline.
 ## Package layout
 
 ```
-nscml/
+swellar/
   pyproject.toml           build config (setuptools; requires-python >=3.11)
-  nscml/
+  swellar/
     __init__.py            from .nsctools import *; from .plot import *
     nsctools.py            detection core + file pipeline (this map)
     plot.py                matplotlib diagnostics (lightcurves, fits, p-value hists)
@@ -49,7 +49,7 @@ search/fit results are pickled.
 
 In flux mode (`space='flux'`, for surveys like Rubin LSST) the same canonical
 columns instead carry the achromatic **fractional flux** `s = F/F_ref - 1` and
-its error, and an event is a POSITIVE excursion (`nscml.normalize(df,
+its error, and an event is a POSITIVE excursion (`swellar.normalize(df,
 schema_flux)` builds it; pass `space='flux'` to the detector/fit). See
 PORTABILITY.md.
 
@@ -159,7 +159,6 @@ Matplotlib diagnostics: `plot_lc`, `plot_deltamags`,
 ## Running it
 
 Python 3.11 with the pinned `requirements.txt` (validated against conda env
-`nsc`, CPython 3.11.9). Build config is `nscml/pyproject.toml`; install editable
-with `pip install -e nscml --config-settings editable_mode=compat` (the nested
-`nscml/nscml` layout needs develop-style path resolution). Tests:
+`nsc`, CPython 3.11.9). Build config is `pyproject.toml`; install editable with
+`pip install -e .`. Tests:
 `pip install -r requirements-dev.txt && python -m pytest`.

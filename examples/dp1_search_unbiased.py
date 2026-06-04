@@ -40,8 +40,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import nscml
-from nscml.surveys.lsst import LSST_FORCEDSOURCE_SCHEMA
+import swellar
+from swellar.surveys.lsst import LSST_FORCEDSOURCE_SCHEMA
 
 RSP_TAP_URL = os.environ.get("RSP_TAP_URL", "https://data.lsst.cloud/api/tap")
 N_STARS = int(os.environ.get("N_STARS", "2000"))      # small default = local selection test
@@ -109,7 +109,7 @@ for i in range(0, len(star_ids), CHUNK):
         med = lc.groupby(["objectId", "band"], observed=True)["psfFlux"].transform("median")
         lc = lc[med > 0]
     if len(lc):
-        c = nscml.detect(lc, schema=schema, restrict_well_sampled=False)
+        c = swellar.detect(lc, schema=schema, restrict_well_sampled=False)
         if len(c):
             cands.append(c)
     got = sum(len(c) for c in cands)

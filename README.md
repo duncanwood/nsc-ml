@@ -1,6 +1,6 @@
-# nsc-ml
+# swellar
 
-[![tests](https://github.com/duncanwood/nsc-ml/actions/workflows/tests.yml/badge.svg)](https://github.com/duncanwood/nsc-ml/actions/workflows/tests.yml)
+[![tests](https://github.com/duncanwood/swellar/actions/workflows/tests.yml/badge.svg)](https://github.com/duncanwood/swellar/actions/workflows/tests.yml)
 
 Multi-band time-series outlier detection for finding gravitational
 **microlensing** events in survey photometry. The detector flags persistent,
@@ -28,9 +28,7 @@ pandas 2.2.2, scipy 1.11.4, numba 0.59.1, pyarrow 16.1.0, tqdm, matplotlib).
 
 ```bash
 pip install -r requirements.txt
-# editable install; compat mode is needed because the distribution root and the
-# package share the name "nscml" (see nscml/pyproject.toml):
-pip install -e nscml --config-settings editable_mode=compat
+pip install -e .          # editable install from the repo root
 ```
 
 ## Quickstart
@@ -44,21 +42,21 @@ Detection runs on a single object's light curve. It reads three columns:
 | `magerr_auto` | 1-sigma magnitude error per epoch |
 
 ```python
-import numpy as np, pandas as pd, nscml
+import numpy as np, pandas as pd, swellar
 
 rng = np.random.default_rng(0)
 n, t0, tE, u0 = 80, 100.0, 20.0, 0.1
 t = np.sort(rng.uniform(0, 200, n))
 
 # inject a PSPL event: amplification A(u) -> magnitude dip
-dip = nscml.amp_to_mag(nscml.microlensing_amplification(t, u0, tE, t0))
+dip = swellar.amp_to_mag(swellar.microlensing_amplification(t, u0, tE, t0))
 lc = pd.DataFrame({
     'mjd': t,
     'deltamag': rng.normal(0, 0.01, n) + dip,
     'magerr_auto': np.full(n, 0.02),
 })
 
-regions = nscml.find_persistent_excursions(lc, z_threshold=3, timescale=5)
+regions = swellar.find_persistent_excursions(lc, z_threshold=3, timescale=5)
 print(len(regions), "excursion region(s):", [list(r) for r in regions])
 ```
 
@@ -69,11 +67,11 @@ grouped by `objectid`) and proceeds search -> fit -> cuts:
 
 ```python
 # excursion search + PSPL fit over a list of parquet files:
-exc_results, fit_results = nscml.search_files_for_microlensing_events(
+exc_results, fit_results = swellar.search_files_for_microlensing_events(
     lcfiles, ws_regions, metadata, params)            # ws_regions: per-object search windows
 
-fitdf = nscml.make_fit_excursions_df(fit_results[0])  # tidy results table
-kept = nscml.cut_pcov(nscml.cut_by_pval(fitdf, 0.05)) # apply selection cuts
+fitdf = swellar.make_fit_excursions_df(fit_results[0])  # tidy results table
+kept = swellar.cut_pcov(swellar.cut_by_pval(fitdf, 0.05)) # apply selection cuts
 ```
 
 `fit_excursions` and `generate_synthetic_microlensing_events_from_population`
@@ -90,10 +88,10 @@ high-level `detect()` runs the whole pipeline in memory straight from a flux
 schema:
 
 ```python
-from nscml.surveys.lsst import from_lsst, LSST_FORCEDSOURCE_SCHEMA, LSST_DIASOURCE_SCHEMA
+from swellar.surveys.lsst import from_lsst, LSST_FORCEDSOURCE_SCHEMA, LSST_DIASOURCE_SCHEMA
 
 # ForcedSource (direct flux): one call -- the schema carries space='flux'
-events = nscml.detect(forcedsource_df, schema=LSST_FORCEDSOURCE_SCHEMA)
+events = swellar.detect(forcedsource_df, schema=LSST_FORCEDSOURCE_SCHEMA)
 
 # DiaSource (difference flux): fold in a positive template F_ref first, then detect
 canonical = from_lsst(diasource_df, LSST_DIASOURCE_SCHEMA, template_flux_col='template')
@@ -101,7 +99,7 @@ canonical = from_lsst(diasource_df, LSST_DIASOURCE_SCHEMA, template_flux_col='te
 
 Under the hood that is `normalize` (`s = F/F_ref - 1`, an achromatic *positive*
 bump) -> `find_persistent_excursions(space='flux')` -> `fit_excursions(space='flux')`.
-Call those directly for finer control. `nscml.flux_to_mag(flux_df, schema)` is the
+Call those directly for finer control. `swellar.flux_to_mag(flux_df, schema)` is the
 alternative (lossy) flux->mag ingest, kept as a comparison baseline.
 
 See **[examples/lsst_quickstart.py](examples/lsst_quickstart.py)** for a runnable
@@ -129,8 +127,8 @@ keeps the suite self-contained, no large data file or network needed.
 | [MAP.md](MAP.md) | code map: public API, numba kernels, cuts, file pipeline |
 | [AUDIT.md](AUDIT.md) | code-quality audit + resolution of the implemented fixes |
 | [PORTABILITY.md](PORTABILITY.md) | roadmap to other surveys / Rubin LSST |
-| `nscml/nscml/nsctools.py` | detection core + file pipeline |
-| `nscml/nscml/plot.py` | matplotlib diagnostics |
+| `swellar/nsctools.py` | detection core + file pipeline |
+| `swellar/plot.py` | matplotlib diagnostics |
 | `tests/` | unit + parity + integration + golden fixtures |
 
 ## Reproducing the original (dissertation) behavior

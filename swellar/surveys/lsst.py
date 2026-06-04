@@ -2,7 +2,7 @@
 
 Maps an LSST flux light-curve table, ForcedSource (direct photometry) or
 DiaSource (difference photometry), onto the canonical fractional-flux frame the
-detector consumes (``nscml.schema``, ``space='flux'``). LSST reports flux in
+detector consumes (``swellar.schema``, ``space='flux'``). LSST reports flux in
 nanojansky and difference fluxes can be negative, so detection runs on the
 achromatic fractional flux ``s = F/F_ref - 1`` (error-safe at low flux), not in
 magnitudes. See PORTABILITY.md sec. 2-3.

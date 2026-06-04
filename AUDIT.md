@@ -1,4 +1,4 @@
-# nscml: audit
+# swellar: audit
 
 ## Verdict
 
@@ -189,8 +189,8 @@ real+synth branch so the recursive bug cannot resurface.
 ### 8. Packaging
 
 `setup.py` uses `distutils` (deprecated; removed from the stdlib in Python
-3.12) and declares `py_modules=['nsctools', 'nscml.plot']`, which does not
-match the actual package (`nscml` with submodules). Proposal: replace with a
+3.12) and declares `py_modules=['nsctools', 'swellar.plot']`, which does not
+match the actual package (`swellar` with submodules). Proposal: replace with a
 `pyproject.toml` (setuptools backend, automatic package discovery,
 `python_requires=">=3.11"`, deps from `requirements.txt`).
 

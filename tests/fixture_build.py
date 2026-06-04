@@ -1,4 +1,4 @@
-"""Deterministic fixture construction for the nscml test suite.
+"""Deterministic fixture construction for the swellar test suite.
 
 Single source of truth shared by ``conftest.py`` (working fixtures for the
 live test run) and ``capture_golden.py`` (golden generation). Keeping the
@@ -28,7 +28,7 @@ import pickle
 import numpy as np
 import pandas as pd
 
-import nscml
+import swellar
 
 # Four well-sampled objects (40-54 epochs, ~1500-1900 day baselines, 5-6
 # bands), chosen deterministically as the first such ids in test.parquet.
@@ -97,7 +97,7 @@ def extract_real_objects(big_parquet, out_path):
 
 
 def _well_sampled(sub):
-    regs = nscml.well_sampled_region(sub, interval=50, maxrevisit=10, seqlen=5)
+    regs = swellar.well_sampled_region(sub, interval=50, maxrevisit=10, seqlen=5)
     return [np.asarray(r) for r in regs]
 
 
@@ -106,7 +106,7 @@ def _inject(real_df, source_id):
     region = _well_sampled(lc)[0]
     rt = lc.loc[region, 'mjd'].to_numpy()
     peak = float(np.mean([rt[0], rt[-1]]))
-    synth = nscml.add_microlensing_event(
+    synth = swellar.add_microlensing_event(
         lc, impact_parameter=INJECT_U0, crossing_time=INJECT_TE_DAYS, peak_time=peak)
     return synth.drop(columns=[c for c in ['originalid'] if c in synth.columns])
 
@@ -129,7 +129,7 @@ def small_sample_lc():
     rng = np.random.default_rng(0)
     n = 24
     t = np.sort(rng.uniform(0, 120, n))
-    dip = nscml.amp_to_mag(nscml.microlensing_amplification(t, 0.06, 8.0, 60.0))
+    dip = swellar.amp_to_mag(swellar.microlensing_amplification(t, 0.06, 8.0, 60.0))
     dm = rng.normal(0, 0.01, n) + dip
     return pd.DataFrame({'objectid': ['small_0'] * n, 'mjd': t,
                          'mag_auto': 18.0 + dm,
@@ -167,7 +167,7 @@ def build_working_fixtures(real_path, outdir):
         assert domain <= synth_idx, (
             f'index contract broken: ws domain for {source} not within {sid}')
         lc = rb[rb_oid == sid]
-        excs = nscml.find_persistent_excursions(
+        excs = swellar.find_persistent_excursions(
             lc, restrict_to_indices=np.concatenate(ws_regions[source]))
         assert len(excs) > 0, f'no excursion detected for injected {sid}'
 
@@ -202,7 +202,7 @@ if __name__ == '__main__':
         extract_real_objects(big, real_path)
         print('wrote', real_path)
 
-    tmp = tempfile.mkdtemp(prefix='nscml_fix_')
+    tmp = tempfile.mkdtemp(prefix='swellar_fix_')
     info = build_working_fixtures(real_path, tmp)
     print('built working fixtures in', tmp)
     for k, v in info.items():

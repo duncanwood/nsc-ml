@@ -1,4 +1,4 @@
-"""Unit tests for the Rubin LSST adapter (nscml.surveys.lsst).
+"""Unit tests for the Rubin LSST adapter (swellar.surveys.lsst).
 
 Synthetic LSST-shaped flux light curves (ForcedSource direct flux and DiaSource
 difference flux). Real-data validation should use the public simulated DP0.2 (no
@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nscml
-from nscml.surveys import lsst
+import swellar
+from swellar.surveys import lsst
 
 FBASE = 5000.0       # quiescent (template) flux, nJy
 SIGMA = 50.0
@@ -22,7 +22,7 @@ def _synth(kind='forced', n=200, band='r', seed=0,
     DiaSource reports the difference `total - FBASE` plus a `template` column."""
     rng = np.random.default_rng(seed)
     t = np.sort(rng.uniform(0, span, n))
-    A = nscml.microlensing_amplification(t, u0, tE, t0)        # flux ratio (blend=1)
+    A = swellar.microlensing_amplification(t, u0, tE, t0)        # flux ratio (blend=1)
     total = FBASE * A + rng.normal(0, SIGMA, n)
     if kind == 'forced':
         return pd.DataFrame({'objectId': ['ev'] * n, 'expMidptMJD': t, 'band': [band] * n,
@@ -67,5 +67,5 @@ def test_from_lsst_forced_and_dia_agree():
 
 def test_from_lsst_output_detects_event():
     out = lsst.from_lsst(_synth('forced'))
-    excs = nscml.find_persistent_excursions(out, space='flux')
+    excs = swellar.find_persistent_excursions(out, space='flux')
     assert len(excs) >= 1                        # the injected event is recovered

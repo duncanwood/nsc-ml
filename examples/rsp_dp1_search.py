@@ -1,6 +1,6 @@
 """DP1 microlensing search on the Rubin Science Platform (paste into an RSP notebook).
 
-Pulls *real* DP1 (LSSTComCam) forced-source light curves via TAP, runs the nscml
+Pulls *real* DP1 (LSSTComCam) forced-source light curves via TAP, runs the swellar
 flux-space detector, and ranks PSPL candidates. Cells are marked with `# %%` so
 this runs top-to-bottom as a script or pastes cell-by-cell into a Jupyter notebook.
 
@@ -24,8 +24,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-import nscml
-from nscml.surveys.lsst import (from_lsst, LSST_FORCEDSOURCE_SCHEMA,
+import swellar
+from swellar.surveys.lsst import (from_lsst, LSST_FORCEDSOURCE_SCHEMA,
                                 LSST_DIASOURCE_SCHEMA)
 
 service = get_tap_service("tap")
@@ -68,7 +68,7 @@ print(f"{len(lc)} forced-source epochs across {lc.diaObjectId.nunique()} objects
 # survey's tested ForcedSource schema (value=None + space='flux'); only the id
 # column differs for ForcedSourceOnDiaObject.
 direct_schema = replace(LSST_FORCEDSOURCE_SCHEMA, id="diaObjectId")
-cand = nscml.detect(lc, schema=direct_schema, restrict_well_sampled=False)
+cand = swellar.detect(lc, schema=direct_schema, restrict_well_sampled=False)
 cand = cand.sort_values("pval").reset_index(drop=True)
 print(f"{len(cand)} PSPL candidates (direct flux)")
 cand.head(15)
@@ -85,9 +85,9 @@ lc_ok = lc[med > 0].copy()
 diff_schema = replace(LSST_DIASOURCE_SCHEMA, time="expMidptMJD",
                       measurement="psfDiffFlux", error="psfDiffFluxErr")
 canonical = from_lsst(lc_ok, diff_schema, template_flux_col="template")
-cand_diff = nscml.detect(
+cand_diff = swellar.detect(
     canonical,
-    schema=nscml.LightcurveSchema(value="deltamag", error="magerr_auto",
+    schema=swellar.LightcurveSchema(value="deltamag", error="magerr_auto",
                                   band="filter", space="flux"),
     restrict_well_sampled=False).sort_values("pval").reset_index(drop=True)
 print(f"{len(cand_diff)} PSPL candidates (difference flux)")

@@ -1,4 +1,4 @@
-# Runtime dependencies for nscml, pinned to the environment the microlensing
+# Runtime dependencies for swellar, pinned to the environment the microlensing
 # detection pipeline was developed and validated against: conda env "nsc",
 # CPython 3.11.9 (the committed __pycache__ is cpython-311). See MAP.md.
 numpy==1.23.5

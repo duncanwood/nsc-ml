@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import nscml
+import swellar
 
-FLUX_SCHEMA = nscml.LightcurveSchema(id='objectid', time='mjd', band='filter',
+FLUX_SCHEMA = swellar.LightcurveSchema(id='objectid', time='mjd', band='filter',
                                      measurement='flux', error='fluxerr',
                                      value=None, space='flux')
 
@@ -26,7 +26,7 @@ def synth_flux_lc(u0=0.2, tE=40.0, t0=200.0, fbase=5000.0, sigma=50.0,
     the usescatter self-calibration (true in mag space too)."""
     rng = np.random.default_rng(seed)
     t = np.sort(rng.uniform(0, span, n))
-    A = nscml.microlensing_amplification(t, u0, tE, t0)   # blend=1 -> flux ratio A
+    A = swellar.microlensing_amplification(t, u0, tE, t0)   # blend=1 -> flux ratio A
     flux = fbase * A + rng.normal(0, sigma, n)
     return pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t, 'flux': flux,
                          'fluxerr': np.full(n, sigma), 'filter': [band] * n})
@@ -40,7 +40,7 @@ def test_ml_f_flux_is_amplification_minus_one():
     t = np.linspace(90, 150, 13)
     p = (0.2, 12.0, 120.0)
     np.testing.assert_array_equal(
-        nscml.ml_f_flux(t, *p), nscml.microlensing_amplification(t, *p) - 1.0)
+        swellar.ml_f_flux(t, *p), swellar.microlensing_amplification(t, *p) - 1.0)
 
 
 def test_normalize_flux_builds_fractional_flux():
@@ -51,7 +51,7 @@ def test_normalize_flux_builds_fractional_flux():
         'fluxerr': [5.0, 5.0, 5.0, 5.0],
         'filter': ['r'] * 4,
     })
-    out = nscml.normalize(df, FLUX_SCHEMA)
+    out = swellar.normalize(df, FLUX_SCHEMA)
     # s = F/F_ref - 1 with F_ref = 100
     np.testing.assert_allclose(out['deltamag'].to_numpy(), [0.0, 0.0, 2.0, 0.0])
     # sigma_s = sigma_F / F_ref = 5/100
@@ -62,19 +62,19 @@ def test_normalize_flux_rejects_nonpositive_baseline():
     df = pd.DataFrame({'objectid': ['a', 'a'], 'mjd': [1.0, 2.0],
                        'flux': [-3.0, 1.0], 'fluxerr': [1.0, 1.0], 'filter': ['r', 'r']})
     with pytest.raises(ValueError, match='F_ref'):
-        nscml.normalize(df, FLUX_SCHEMA)
+        swellar.normalize(df, FLUX_SCHEMA)
 
 
 def test_flux_to_mag_drops_nonpositive_and_converts():
     df = pd.DataFrame({
         'objectid': ['a'] * 3,
         'mjd': [1.0, 2.0, 3.0],
-        'flux': [nscml.AB_ZEROPOINT_NJY, -10.0, nscml.AB_ZEROPOINT_NJY * 10 ** (-0.4)],
+        'flux': [swellar.AB_ZEROPOINT_NJY, -10.0, swellar.AB_ZEROPOINT_NJY * 10 ** (-0.4)],
         'fluxerr': [1e7, 1e7, 1e7],
         'filter': ['r'] * 3,
     })
     with pytest.warns(UserWarning, match='non-positive'):
-        out = nscml.flux_to_mag(df, FLUX_SCHEMA)
+        out = swellar.flux_to_mag(df, FLUX_SCHEMA)
     assert len(out) == 2                                   # the negative-flux epoch dropped
     # AB mag of the zeropoint flux is 0; of zp*10**-0.4 is +1 -> baseline-subtracted
     # (median of {0, 1} = 0.5): deltamag = {-0.5, +0.5}
@@ -86,13 +86,13 @@ def test_fractional_flux_is_achromatic_across_bands():
     fractional flux s = A/median(A) - 1 is band-independent (raw flux is not).
     This is what makes pooling bands valid in flux space."""
     t = np.linspace(80, 160, 30)
-    A = nscml.microlensing_amplification(t, 0.2, 12.0, 120.0)
+    A = swellar.microlensing_amplification(t, 0.2, 12.0, 120.0)
     rows = []
     for band, fbase in (('g', 2000.0), ('r', 5000.0), ('i', 9000.0)):
         for ti, Ai in zip(t, A):
             rows.append({'objectid': 'ev', 'mjd': ti, 'flux': fbase * Ai,
                          'fluxerr': 0.01 * fbase, 'filter': band})
-    out = nscml.normalize(pd.DataFrame(rows), FLUX_SCHEMA)
+    out = swellar.normalize(pd.DataFrame(rows), FLUX_SCHEMA)
     for ti in t[::6]:
         s = out[np.isclose(out['mjd'], ti)]['deltamag'].to_numpy()
         assert len(s) == 3
@@ -107,17 +107,17 @@ def _run(space, frame, tmp_path, label):
     """Detect + fit one object's canonical frame in the given space."""
     p = os.path.join(str(tmp_path), f'{label}.parquet')
     frame.to_parquet(p)
-    excs = {oid: nscml.find_persistent_excursions(frame[frame['objectid'] == oid], space=space)
+    excs = {oid: swellar.find_persistent_excursions(frame[frame['objectid'] == oid], space=space)
             for oid in frame['objectid'].unique()}
     meta = {'outdir': str(tmp_path), 'outfile': f'{label}_s.pkl', 'fitoutfile': f'{label}_f.pkl'}
-    fr, _, _ = nscml.fit_excursions(excs, [p], dict(meta), {}, space=space,
+    fr, _, _ = swellar.fit_excursions(excs, [p], dict(meta), {}, space=space,
                                     rng=np.random.default_rng(0))
-    return excs, nscml.make_fit_excursions_df(fr)
+    return excs, swellar.make_fit_excursions_df(fr)
 
 
 def test_flux_pipeline_detects_and_recovers(tmp_path):
     lc = synth_flux_lc()                               # u0=0.2, tE=40, t0=200
-    frame = nscml.normalize(lc, FLUX_SCHEMA)           # deltamag now carries s>0 bump
+    frame = swellar.normalize(lc, FLUX_SCHEMA)           # deltamag now carries s>0 bump
     excs, fitdf = _run('flux', frame, tmp_path, 'flux')
     assert len(excs['ev']) >= 1                        # positive bump detected
     assert len(fitdf) >= 1
@@ -131,10 +131,10 @@ def test_flux_and_flux_to_mag_recover_consistent_params(tmp_path):
     event recover consistent crossing time and peak time."""
     lc = synth_flux_lc()
 
-    flux_frame = nscml.normalize(lc, FLUX_SCHEMA)
+    flux_frame = swellar.normalize(lc, FLUX_SCHEMA)
     _, flux_df = _run('flux', flux_frame, tmp_path, 'fx')
 
-    mag_frame = nscml.flux_to_mag(lc, FLUX_SCHEMA)     # bright source -> nothing dropped
+    mag_frame = swellar.flux_to_mag(lc, FLUX_SCHEMA)     # bright source -> nothing dropped
     _, mag_df = _run('mag', mag_frame, tmp_path, 'mg')
 
     assert len(flux_df) >= 1 and len(mag_df) >= 1
@@ -169,8 +169,8 @@ def test_add_microlensing_event_flux_is_multiplicative():
     frame = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t,
                           'deltamag': s0, 'magerr_auto': sig0, 'filter': ['r'] * n})
     params = dict(impact_parameter=0.2, crossing_time=40.0, peak_time=200.0)
-    out = nscml.add_microlensing_event(frame, space='flux', **params)
-    A = nscml.microlensing_amplification(t, **params)
+    out = swellar.add_microlensing_event(frame, space='flux', **params)
+    A = swellar.microlensing_amplification(t, **params)
     np.testing.assert_allclose(out['deltamag'].to_numpy(), (s0 + 1.0) * A - 1.0)
     np.testing.assert_allclose(out['magerr_auto'].to_numpy(), sig0 * A)
     assert (out['originalid'] == 'ev').all()
@@ -185,7 +185,7 @@ def test_add_microlensing_event_flux_is_a_positive_bump():
     t = np.sort(np.random.default_rng(0).uniform(0, 400, n))
     frame = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t, 'deltamag': np.zeros(n),
                           'magerr_auto': np.full(n, 0.01), 'filter': ['r'] * n})
-    out = nscml.add_microlensing_event(frame, space='flux',
+    out = swellar.add_microlensing_event(frame, space='flux',
                                        impact_parameter=0.1, crossing_time=30.0, peak_time=200.0)
     s = out['deltamag'].to_numpy()
     assert s.max() > 0.1
@@ -197,7 +197,7 @@ def test_add_microlensing_event_rejects_unknown_space():
     frame = pd.DataFrame({'objectid': ['ev'], 'mjd': [1.0], 'deltamag': [0.0],
                           'magerr_auto': [0.01], 'filter': ['r']})
     with pytest.raises(ValueError, match='space'):
-        nscml.add_microlensing_event(frame, space='nonsense',
+        swellar.add_microlensing_event(frame, space='nonsense',
                                      impact_parameter=0.2, crossing_time=40.0, peak_time=1.0)
 
 
@@ -212,9 +212,9 @@ def test_add_microlensing_event_mag_and_flux_are_same_event():
                               'mag_auto': np.full(n, 20.0), 'deltamag': np.zeros(n)})
     flux_frame = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t, 'deltamag': np.zeros(n),
                                'magerr_auto': np.full(n, 0.01), 'filter': ['r'] * n})
-    dmag = nscml.add_microlensing_event(mag_frame, space='mag', **params)['deltamag'].to_numpy()
-    s = nscml.add_microlensing_event(flux_frame, space='flux', **params)['deltamag'].to_numpy()
-    A = nscml.microlensing_amplification(t, **params)
+    dmag = swellar.add_microlensing_event(mag_frame, space='mag', **params)['deltamag'].to_numpy()
+    s = swellar.add_microlensing_event(flux_frame, space='flux', **params)['deltamag'].to_numpy()
+    A = swellar.microlensing_amplification(t, **params)
     np.testing.assert_allclose(10.0 ** (-dmag / 2.5), s + 1.0, rtol=1e-9)
     np.testing.assert_allclose(s + 1.0, A, rtol=1e-12)
 
@@ -222,8 +222,8 @@ def test_add_microlensing_event_mag_and_flux_are_same_event():
 def test_flux_injection_recovered_by_detector(tmp_path):
     """End-to-end yardstick: inject a known event into a quiescent flux LC with
     add_microlensing_event(space='flux'), then detect + fit and recover it."""
-    frame = nscml.normalize(_quiescent_flux_lc(), FLUX_SCHEMA)     # canonical flux frame, s ~ 0
-    inj = nscml.add_microlensing_event(frame, space='flux',
+    frame = swellar.normalize(_quiescent_flux_lc(), FLUX_SCHEMA)     # canonical flux frame, s ~ 0
+    inj = swellar.add_microlensing_event(frame, space='flux',
                                        impact_parameter=0.2, crossing_time=40.0, peak_time=200.0)
     excs, fitdf = _run('flux', inj, tmp_path, 'inj')
     sid = inj.iloc[0]['objectid']
@@ -246,11 +246,11 @@ def test_generate_synthetic_flux_mode_runs_and_injects(tmp_path):
                           'filter': ['r'] * n}).reset_index(drop=True)
     lcpath = os.path.join(str(tmp_path), 'lc.parquet')
     frame.to_parquet(lcpath)
-    regions = nscml.well_sampled_region(frame, interval=50, maxrevisit=10, seqlen=5)
+    regions = swellar.well_sampled_region(frame, interval=50, maxrevisit=10, seqlen=5)
     assert regions, 'need a well-sampled region to inject into'
     ws_regions = {'ev': regions}
     events = pd.DataFrame({'crossing_time': [40.0 * 24], 'umin': [0.2]})    # tE in HOURS (gen divides by 24)
-    nscml.generate_synthetic_microlensing_events_from_population(
+    swellar.generate_synthetic_microlensing_events_from_population(
         [lcpath], events, ws_regions, str(tmp_path), 'fxsynth',
         rng=np.random.default_rng(0), space='flux')
     base = os.path.join(str(tmp_path), 'synth-fxsynth')
@@ -266,7 +266,7 @@ def test_generate_synthetic_flux_mode_runs_and_injects(tmp_path):
 
 def test_detect_flux_recovers_event():
     """detect() end-to-end on a raw flux table: normalize -> find -> fit."""
-    out = nscml.detect(synth_flux_lc(), FLUX_SCHEMA, rng=np.random.default_rng(0))
+    out = swellar.detect(synth_flux_lc(), FLUX_SCHEMA, rng=np.random.default_rng(0))
     assert len(out) >= 1
     row = out.iloc[0]
     assert row['crossing_time'] == pytest.approx(40.0, rel=0.25)
@@ -280,9 +280,9 @@ def test_detect_mag_space_recovers_event():
     base = pd.DataFrame({'objectid': ['ev'] * n, 'mjd': t, 'mag_auto': np.full(n, 20.0),
                          'deltamag': np.zeros(n), 'magerr_auto': np.full(n, 0.02),
                          'filter': ['r'] * n})
-    lc = nscml.add_microlensing_event(base, space='mag',
+    lc = swellar.add_microlensing_event(base, space='mag',
                                       impact_parameter=0.2, crossing_time=40.0, peak_time=200.0)
-    out = nscml.detect(lc, rng=np.random.default_rng(0))        # default schema = NSC mag
+    out = swellar.detect(lc, rng=np.random.default_rng(0))        # default schema = NSC mag
     assert len(out) >= 1
     row = out.iloc[0]
     assert row['crossing_time'] == pytest.approx(40.0, rel=0.3)
@@ -291,7 +291,7 @@ def test_detect_mag_space_recovers_event():
 
 def test_detect_unknown_param_raises():
     with pytest.raises(ValueError, match='Unknown parameters'):
-        nscml.detect(synth_flux_lc(n=10), FLUX_SCHEMA, not_a_real_param=1)
+        swellar.detect(synth_flux_lc(n=10), FLUX_SCHEMA, not_a_real_param=1)
 
 
 def test_detect_empty_when_no_well_sampled_region():
@@ -300,7 +300,7 @@ def test_detect_empty_when_no_well_sampled_region():
     lc = pd.DataFrame({'objectid': ['ev'] * 4, 'mjd': [0.0, 100.0, 200.0, 300.0],
                        'flux': [5000.0, 5010.0, 4990.0, 5005.0], 'fluxerr': [50.0] * 4,
                        'filter': ['r'] * 4})
-    out = nscml.detect(lc, FLUX_SCHEMA)
+    out = swellar.detect(lc, FLUX_SCHEMA)
     assert len(out) == 0
     for c in ('objectid', 'excnum', 'crossing_time', 'peak_time', 'pval'):
         assert c in out.columns
@@ -311,9 +311,9 @@ def test_detect_matches_manual_file_pipeline(tmp_path):
     fit -> make_df); the fitted parameters are curve_fit outputs, so they match
     independent of the KS rng."""
     lc = synth_flux_lc()
-    frame = nscml.normalize(lc, FLUX_SCHEMA)
+    frame = swellar.normalize(lc, FLUX_SCHEMA)
     _, manual = _run('flux', frame, tmp_path, 'man')                   # file-backed pipeline
-    auto = nscml.detect(lc, FLUX_SCHEMA, restrict_well_sampled=False,   # match _run (no ws restriction)
+    auto = swellar.detect(lc, FLUX_SCHEMA, restrict_well_sampled=False,   # match _run (no ws restriction)
                         rng=np.random.default_rng(0))
     assert len(auto) == len(manual) >= 1
     for col in ('crossing_time', 'peak_time', 'impact_parameter'):

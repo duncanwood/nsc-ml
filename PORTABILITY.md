@@ -1,4 +1,4 @@
-# nscml: portability and generalization notes
+# swellar: portability and generalization notes
 
 Notes on taking this from the NSC magnitude pipeline I wrote for my dissertation
 to a tool another person, telescope, or dataset (Rubin LSST in particular) can
@@ -42,7 +42,7 @@ Define one internal "canonical lightcurve" the core operates on, and push every
 survey-specific name/convention into an adapter that produces it. Concretely:
 
 ```python
-# nscml/schema.py
+# swellar/schema.py
 @dataclass(frozen=True)
 class LightcurveSchema:
     id: str          # object id column
@@ -61,8 +61,8 @@ Then the core (`find_persistent_excursions`, `fit_excursions`, ...) reads only
 the canonical names. Survey knowledge lives in small adapters:
 
 ```python
-# nscml/surveys/nsc.py   -> from_nsc(df)     (mag_auto, <band>mag baselines, ...)
-# nscml/surveys/lsst.py  -> from_lsst(df)    (psfFlux/psfFluxErr in nJy, band, ...)
+# swellar/surveys/nsc.py   -> from_nsc(df)     (mag_auto, <band>mag baselines, ...)
+# swellar/surveys/lsst.py  -> from_lsst(df)    (psfFlux/psfFluxErr in nJy, band, ...)
 ```
 
 Two implementation paths, smallest-diff first:
@@ -80,7 +80,7 @@ it is low-risk and immediately lets someone point the tool at their own columns.
 
 ## 2. Magnitude vs flux: the Rubin blocker (DONE: both implemented)
 
-nscml is a magnitude-space method: the detection signal is a **negative**
+swellar is a magnitude-space method: the detection signal is a **negative**
 delta-magnitude excursion, `amp_to_mag = -2.5 log10(A)`, and the PSPL model is
 fit in mags. LSST reports **flux in nanojansky (nJy)**, and forced/difference
 fluxes **can be negative** at faint flux; Rubin plots light curves in flux, not
@@ -196,7 +196,7 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   mirrors the NSC well-sampled search; unknown params raise. The file pipeline
   (`search_files_for_microlensing_events`) stays for scale.
 - **Separate library from NSC specifics:** move `magstr`, `make_instrument`,
-  `color_filter`, `marker_map` into `nscml/surveys/nsc.py`. The core should not
+  `color_filter`, `marker_map` into `swellar/surveys/nsc.py`. The core should not
   import DECam instrument codes.
 - **Plotting is schema-coupled too:** `plot.py` indexes `color_filter[band]` and
   `marker_map[instrument]` and reads `<band>mag` baseline columns, drive these
@@ -212,15 +212,15 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
 ## 5. Suggested phased plan
 
 - **Phase 1 (low-risk, high-value), DONE.** README + data contract;
-  `LightcurveSchema` + `normalize(df, schema)` (`nscml/schema.py`); NSC adapter
-  namespace (`nscml/surveys/nsc.py`) re-exporting the NSC-specific helpers. No
+  `LightcurveSchema` + `normalize(df, schema)` (`swellar/schema.py`); NSC adapter
+  namespace (`swellar/surveys/nsc.py`) re-exporting the NSC-specific helpers. No
   kernel changes; goldens unaffected; 8 new tests. (Physical relocation of the
   NSC helpers out of `nsctools` is deferred, notebooks still import them
   there.)
 - **Phase 2 (flux/Rubin), DONE (detection core).** `space='flux'`
   fractional-flux detection + fit, and the `flux_to_mag` baseline (section 2);
   mag goldens byte-identical; 7 new tests. The `from_lsst` adapter
-  (`nscml/surveys/lsst.py`: ForcedSource/DiaSource -> fractional flux, with a
+  (`swellar/surveys/lsst.py`: ForcedSource/DiaSource -> fractional flux, with a
   `template_flux_col` supplying a positive `F_ref` for difference flux) is built
   and synthetic-tested (5 tests). Multiplicative synthetic injection in flux
   (`add_microlensing_event`/`generate_synthetic` `space='flux'`: `F -> F*A`, i.e.
@@ -239,7 +239,7 @@ observed flux `F -> F*A` (stored signal `s -> (s+1)*A - 1`) with
   are kept as-is; quantifying how well they suit the LSST WFD cadence is future
   research; (2) DP0.2/DP1 end-to-end validation on the RSP (needs an RSP account
   / Rubin data), deployment recipe in [RUNNING_ON_RSP.md](RUNNING_ON_RSP.md)
-  (stack is Python 3.12, so nscml installs; the numpy 1.x->2.x jump is the open
+  (stack is Python 3.12, so swellar installs; the numpy 1.x->2.x jump is the open
   risk to validate).
 
 ---

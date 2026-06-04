@@ -10,7 +10,7 @@ import pickle
 import numpy as np
 import pytest
 
-import nscml
+import swellar
 import fixture_build as fb
 
 
@@ -21,15 +21,15 @@ def _meta(outdir):
 @pytest.fixture
 def search_results(working, tmp_path):
     meta = _meta(str(tmp_path))
-    results = nscml.search_files_for_excursions(
+    results = swellar.search_files_for_excursions(
         [working['mini_lc']], working['ws_regions_obj'], dict(meta), {})
     return results
 
 
 def test_search_detects_only_injected_objects(search_results, working):
     _, _, excursions = search_results
-    detected = set(nscml.reduce_excursions(excursions))
-    nondet = set(nscml.get_nondetections(excursions))
+    detected = set(swellar.reduce_excursions(excursions))
+    nondet = set(swellar.get_nondetections(excursions))
     # the four real baseline objects must be clean; the injected ones detected
     for rid in working['real_ids']:
         assert rid in nondet
@@ -49,9 +49,9 @@ def test_search_writes_consolidated_pickle(search_results, tmp_path):
 def test_fit_and_cuts(working, tmp_path, search_results):
     _, _, excursions = search_results
     meta = _meta(str(tmp_path))
-    fitresults, fitfails, fitdups = nscml.fit_excursions(
+    fitresults, fitfails, fitdups = swellar.fit_excursions(
         excursions, [working['mini_lc']], dict(meta), {}, rng=np.random.default_rng(0))
-    fitdf = nscml.make_fit_excursions_df(fitresults)
+    fitdf = swellar.make_fit_excursions_df(fitresults)
 
     assert list(fitdf.columns) == ['objectid', 'excnum', 'pval', 'n_fit', 'n_out',
                                    'cond_num', 'impact_parameter', 'crossing_time',
@@ -63,7 +63,7 @@ def test_fit_and_cuts(working, tmp_path, search_results):
     # cut_pcov must remove ill-conditioned (degenerate) fits and keep good ones.
     # The fixture produces one well-conditioned and one rail-to-the-bound fit.
     assert (fitdf['cond_num'] > 1e5).any(), 'expected a degenerate fit to cut'
-    kept = nscml.cut_pcov(fitdf)
+    kept = swellar.cut_pcov(fitdf)
     assert (kept['cond_num'] < 1e5).all()
     assert len(kept) < len(fitdf)
 
@@ -71,7 +71,7 @@ def test_fit_and_cuts(working, tmp_path, search_results):
 def test_fit_results_pickle_roundtrip(working, tmp_path, search_results):
     _, _, excursions = search_results
     meta = _meta(str(tmp_path))
-    nscml.fit_excursions(excursions, [working['mini_lc']], dict(meta), {},
+    swellar.fit_excursions(excursions, [working['mini_lc']], dict(meta), {},
                          rng=np.random.default_rng(0))
     out = os.path.join(meta['outdir'], meta['fitoutfile'])
     assert os.path.exists(out)
@@ -83,18 +83,18 @@ def test_fit_results_pickle_roundtrip(working, tmp_path, search_results):
 def test_combined_driver_matches_manual(working, tmp_path):
     """search_files_for_microlensing_events should run search+fit as one step."""
     meta = _meta(str(tmp_path))
-    exc_res, fit_res = nscml.search_files_for_microlensing_events(
+    exc_res, fit_res = swellar.search_files_for_microlensing_events(
         [working['mini_lc']], working['ws_regions_obj'], dict(meta), {})
     _, _, excursions = exc_res
     fitresults, fitfails, fitdups = fit_res
-    detected = set(nscml.reduce_excursions(excursions))
+    detected = set(swellar.reduce_excursions(excursions))
     assert set(working['synth_ids']) <= detected
     assert isinstance(fitresults, list)
 
 
 def test_combined_driver_rejects_unknown_param(working, tmp_path):
     with pytest.raises(ValueError):
-        nscml.search_files_for_microlensing_events(
+        swellar.search_files_for_microlensing_events(
             [working['mini_lc']], working['ws_regions_obj'],
             _meta(str(tmp_path)), {'not_a_real_param': 1})
 
@@ -105,13 +105,13 @@ def test_fit_excursions_rng_is_reproducible(tmp_path):
     lc = fb.small_sample_lc()
     p = os.path.join(str(tmp_path), 'small.parquet')
     lc.to_parquet(p)
-    excs = {'small_0': nscml.find_persistent_excursions(lc)}
+    excs = {'small_0': swellar.find_persistent_excursions(lc)}
     meta = _meta(tmp_path)
 
     def run(seed):
-        fr, _, _ = nscml.fit_excursions(excs, [p], dict(meta), {},
+        fr, _, _ = swellar.fit_excursions(excs, [p], dict(meta), {},
                                         rng=np.random.default_rng(seed))
-        return nscml.make_fit_excursions_df(fr)
+        return swellar.make_fit_excursions_df(fr)
 
     a, b, c = run(0), run(0), run(1)
     assert not a['two_sample'].any()  # confirms the RNG (small-sample) branch is hit
@@ -126,12 +126,12 @@ def test_fit_excursions_context_size_controls_window(tmp_path):
     lc = fb.small_sample_lc()
     p = os.path.join(str(tmp_path), 'small.parquet')
     lc.to_parquet(p)
-    excs = {'small_0': nscml.find_persistent_excursions(lc)}
+    excs = {'small_0': swellar.find_persistent_excursions(lc)}
     meta = _meta(tmp_path)
 
     def n_fit(cs):
-        fr, _, _ = nscml.fit_excursions(excs, [p], dict(meta), {}, context_size=cs,
+        fr, _, _ = swellar.fit_excursions(excs, [p], dict(meta), {}, context_size=cs,
                                         rng=np.random.default_rng(0))
-        return int(nscml.make_fit_excursions_df(fr)['n_fit'].iloc[0])
+        return int(swellar.make_fit_excursions_df(fr)['n_fit'].iloc[0])
 
     assert n_fit(10) < n_fit(30) < n_fit(100)

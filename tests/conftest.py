@@ -1,4 +1,4 @@
-"""Shared fixtures, tolerances and helpers for the nscml suite.
+"""Shared fixtures, tolerances and helpers for the swellar suite.
 
 Run with the env that holds the pinned deps:
     /Users/duncan/mambaforge/envs/nsc/bin/python -m pytest

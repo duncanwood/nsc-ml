@@ -3,7 +3,7 @@
 Same search as ``examples/rsp_dp1_search.py`` -- the ADQL and the ``detect()`` calls
 are the same -- but instead of running inside an RSP notebook this pulls the DP1
 light curves over the network with an RSP user token and runs the detector on this
-machine. Detection then happens in the environment nscml was *validated* on
+machine. Detection then happens in the environment swellar was *validated* on
 (numpy 1.23.5, the version the goldens were captured against), so the numpy-2.x
 caveat in RUNNING_ON_RSP.md never applies: only the catalog query goes remote.
 
@@ -24,7 +24,7 @@ Setup (one time):
        security add-generic-password -s rsp-usdf-tap -w        # paste at the prompt
        export RSP_TOKEN=$(security find-generic-password -s rsp-usdf-tap -w)
        export RSP_TAP_URL='https://usdf-rsp.slac.stanford.edu/api/tap'   # USDF
-  3. Run it in an env that has nscml + pyvo + pandas (the project's ``nsc`` env does):
+  3. Run it in an env that has swellar + pyvo + pandas (the project's ``nsc`` env does):
        python examples/dp1_search_local.py
 
 Cells are marked ``# %%`` so this also pastes top-to-bottom into a notebook.
@@ -44,8 +44,8 @@ import matplotlib
 matplotlib.use("Agg")  # headless: write plots to disk instead of opening a window
 import matplotlib.pyplot as plt
 
-import nscml
-from nscml.surveys.lsst import (from_lsst, LSST_FORCEDSOURCE_SCHEMA,
+import swellar
+from swellar.surveys.lsst import (from_lsst, LSST_FORCEDSOURCE_SCHEMA,
                                 LSST_DIASOURCE_SCHEMA)
 
 # DP1 lives on the IDF by default; override to point at the USDF deployment.
@@ -128,7 +128,7 @@ print(f"{len(lc)} forced-source epochs across {lc.diaObjectId.nunique()} objects
 # ForcedSourceOnDiaObject. restrict_well_sampled=False: ComCam's baseline (~32 d)
 # is shorter than the 50-day well-sampled default, so search the whole curve.
 direct_schema = replace(LSST_FORCEDSOURCE_SCHEMA, id="diaObjectId")
-cand = nscml.detect(lc, schema=direct_schema, restrict_well_sampled=False)
+cand = swellar.detect(lc, schema=direct_schema, restrict_well_sampled=False)
 cand = cand.sort_values("pval").reset_index(drop=True)
 print(f"{len(cand)} PSPL candidates (direct flux)")
 cand.to_parquet(RESULTS / "dp1_candidates_direct.parquet")
@@ -151,9 +151,9 @@ try:
     diff_schema = replace(LSST_DIASOURCE_SCHEMA, time="expMidptMJD",
                           measurement="psfDiffFlux", error="psfDiffFluxErr")
     canonical = from_lsst(lc_ok, diff_schema, template_flux_col="template")
-    signal_schema = nscml.LightcurveSchema(value="deltamag", error="magerr_auto",
+    signal_schema = swellar.LightcurveSchema(value="deltamag", error="magerr_auto",
                                            band="filter", space="flux")
-    cand_diff = nscml.detect(canonical, schema=signal_schema,
+    cand_diff = swellar.detect(canonical, schema=signal_schema,
                              restrict_well_sampled=False).sort_values("pval").reset_index(drop=True)
     print(f"{len(cand_diff)} PSPL candidates (difference flux)")
     cand_diff.to_parquet(RESULTS / "dp1_candidates_diff.parquet")
