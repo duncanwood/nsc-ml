@@ -205,8 +205,8 @@ Pinned in `requirements.txt`, validated against conda env `nsc` (CPython
 | pandas | 2.2.2 | DataFrames, parquet I/O |
 | scipy | 1.11.4 | curve_fit, sparse, kstwo |
 | numba | 0.59.1 | the WMA/WMS/PSPL kernels |
-| pyarrow | 16.1.0 | parquet backend |
-| tqdm | 4.66.2 | progress bars |
+| pyarrow | 23.0.1 | parquet backend |
+| tqdm | 4.66.3 | progress bars |
 | matplotlib | 3.8.4 | plot.py only |
 
 - **Python >= 3.11 is required**, not optional: `fit_excursions` calls
@@ -219,6 +219,17 @@ Pinned in `requirements.txt`, validated against conda env `nsc` (CPython
   inputs but only guaranteed bit-identical on the same BLAS/platform; the fit
   parity tests allow a tight tolerance (1e-9) for cross-platform last-ULP
   drift, while the pure-numba kernels are asserted bit-exact.
+- **pyarrow and tqdm are pinned above the original validated env** for two
+  security advisories, neither of which actually reaches this code:
+  CVE-2026-25087 (pyarrow, use-after-free on Arrow IPC reads with pre-buffering)
+  is C++-only -- `RecordBatchFileReader::PreBufferMetadata` is not exposed in
+  the Python binding, and swellar reads parquet, never IPC -- and CVE-2024-34062
+  (tqdm) is an `eval` in the `python -m tqdm` CLI, which swellar never invokes.
+  The pins moved anyway because both patched releases are cheap: 16.1.0 ->
+  23.0.1 and 4.66.2 -> 4.66.3 were re-validated on 2026-08-19 with the full
+  suite on arm64/Darwin (100 passed, parity goldens bit-exact). `pyproject.toml`
+  keeps the pyarrow *floor* at 16.1.0 so the RSP lower-bound install does not
+  fight rubin-env's conda-managed pyarrow.
 - **scikit-learn** is intentionally absent: it was used only by the removed
   `__deprecated.py` KDE time-segmentation, not by the detection pipeline.
 - I/O uses **pickle** for intermediate search/fit results, convenient but

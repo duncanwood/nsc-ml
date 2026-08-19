@@ -24,7 +24,7 @@ is a parquet-backed batch pipeline.
 
 Requires **Python 3.11** (uses `warnings.catch_warnings(action=...)`).
 Validated against the pinned versions in `requirements.txt` (numpy 1.23.5,
-pandas 2.2.2, scipy 1.11.4, numba 0.59.1, pyarrow 16.1.0, tqdm, matplotlib).
+pandas 2.2.2, scipy 1.11.4, numba 0.59.1, pyarrow 23.0.1, tqdm, matplotlib).
 
 ```bash
 pip install -r requirements.txt

@@ -14,8 +14,15 @@ dependencies = [
     "pandas>=2.2.2",
     "scipy>=1.11.4",
     "numba>=0.59.1",
+    # pyarrow's floor stays at the validated 16.1.0 rather than the
+    # CVE-2026-25087 fix (23.0.1, which requirements.txt does take): this is the
+    # lower-bound path RUNNING_ON_RSP.md installs through, and raising it would
+    # force an upgrade of rubin-env's conda-managed pyarrow. The advisory does
+    # not reach us either way -- the vulnerable call is C++-only
+    # (RecordBatchFileReader::PreBufferMetadata, unexposed in the Python
+    # binding), and swellar reads parquet, never Arrow IPC.
     "pyarrow>=16.1.0",
-    "tqdm>=4.66.2",
+    "tqdm>=4.66.3",   # CVE-2024-34062; a patch release, safe to require
     "matplotlib>=3.8.4",
 ]
 
